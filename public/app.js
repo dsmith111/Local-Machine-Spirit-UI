@@ -1,7 +1,8 @@
 /*
  * Cogitator — client logic.
- * Talks to the relay at /api/hermes/* which forwards to the Hermes Agent
- * OpenAI-compatible API server (POST /v1/chat/completions, streaming SSE).
+ * Talks to the relay at /api/agent/* which forwards to the agentic harness's
+ * OpenAI-compatible API (POST /v1/chat/completions, streaming SSE). Hermes Agent
+ * extensions (tool progress, approvals, sessions) are used when present.
  */
 (function () {
   'use strict';
@@ -35,7 +36,7 @@
 
   const DEFAULT_SETTINGS = {
     accessCode: '',
-    name: 'HERMES',
+    name: 'MACHINE SPIRIT',
     phosphor: 'green',
     ritual: false,
     system: '',
@@ -46,7 +47,7 @@
   let settings = { ...DEFAULT_SETTINGS, ...store.get(LS_SETTINGS, {}) };
   let archives = store.get(LS_ARCHIVES, []);
   let currentId = store.get(LS_CURRENT, null);
-  let serverConfig = { authRequired: false, model: 'hermes-agent' };
+  let serverConfig = { authRequired: false, model: 'default' };
 
   const RITUAL_PROMPT =
     'Adopt the persona of a venerable machine spirit dwelling within a sacred cogitator, addressing the user as an honoured adept. ' +
@@ -130,7 +131,7 @@
   function applySettings() {
     el.root.dataset.phosphor = settings.phosphor;
     el.root.classList.toggle('fx', !!settings.fx);
-    const name = (settings.name || 'HERMES').trim() || 'HERMES';
+    const name = (settings.name || 'MACHINE SPIRIT').trim() || 'MACHINE SPIRIT';
     el.spiritName.textContent = name.toUpperCase();
     document.title = `${name} · Cogitator`;
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -160,7 +161,7 @@
     settings = {
       ...settings,
       accessCode: $('#set-access').value.trim(),
-      name: $('#set-name').value.trim() || 'HERMES',
+      name: $('#set-name').value.trim() || 'MACHINE SPIRIT',
       phosphor: $('#set-phosphor').value,
       ritual: $('#set-ritual').checked,
       system: $('#set-system').value.trim(),
@@ -298,7 +299,7 @@
   }
 
   function spiritLabel() {
-    return (settings.name || 'HERMES').toUpperCase();
+    return (settings.name || 'MACHINE SPIRIT').toUpperCase();
   }
 
   function renderRites(msg) {
@@ -509,8 +510,10 @@
   // -------------------------------------------------------------------------
   async function checkLink() {
     try {
-      const res = await fetch('/api/hermes/health', { cache: 'no-store' });
-      if (res.ok) {
+      let res = await fetch('/api/agent/health', { cache: 'no-store' });
+      // Plain model servers (Ollama, LM Studio, …) have no /health; probe /v1/models instead.
+      if (res.status === 404) res = await fetch('/api/agent/v1/models', { cache: 'no-store', headers: authHeaders() });
+      if (res.ok || res.status === 401) {
         el.linkStatus.className = 'link ok';
         el.linkStatus.textContent = 'Noosphere: stable';
       } else {
@@ -748,11 +751,11 @@
       };
       if (conv.sessionId) headers['X-Hermes-Session-Id'] = conv.sessionId;
 
-      const res = await fetch('/api/hermes/v1/chat/completions', {
+      const res = await fetch('/api/agent/v1/chat/completions', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          model: serverConfig.model || 'hermes-agent',
+          model: serverConfig.model || 'default',
           messages: buildMessages(conv, userMsg, images.map((i) => i.full)),
           stream: true,
         }),
@@ -775,7 +778,7 @@
         if (res.status === 401 && code === 'cogitator_auth') {
           failure = { text: 'The cogitator rejects thy access cipher. Enter it in the Configuration Rites.', auth: true };
         } else if (res.status === 401) {
-          failure = { text: 'The machine spirit rejected the relay’s credentials. Check HERMES_API_KEY on the server.' };
+          failure = { text: 'The machine spirit rejected the relay’s credentials. Check AGENT_API_KEY on the server.' };
         } else if (res.status === 429) {
           failure = { text: 'The spirit is overburdened with concurrent rites. Wait, then repeat.', retryable: true };
         } else {
@@ -920,7 +923,7 @@
     if (reqId) body.request_id = reqId;
     if (approval.execution_generation != null) body.execution_generation = approval.execution_generation;
     try {
-      const res = await fetch(`/api/hermes/v1/runs/${encodeURIComponent(runId)}/approval`, {
+      const res = await fetch(`/api/agent/v1/runs/${encodeURIComponent(runId)}/approval`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
@@ -939,7 +942,7 @@
 
   function cease() {
     if (activeRunId) {
-      fetch(`/api/hermes/v1/runs/${encodeURIComponent(activeRunId)}/stop`, {
+      fetch(`/api/agent/v1/runs/${encodeURIComponent(activeRunId)}/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: '{}',

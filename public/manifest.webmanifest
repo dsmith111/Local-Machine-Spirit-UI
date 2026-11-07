@@ -1,7 +1,7 @@
 {
-  "name": "Cogitator — Machine Spirit Terminal",
+  "name": "Local Cogitator Interface",
   "short_name": "Cogitator",
-  "description": "Commune with your local machine spirit (Hermes Agent).",
+  "description": "Commune with your local machine spirit: a chat UI for local agents.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

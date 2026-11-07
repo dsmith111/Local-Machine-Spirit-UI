@@ -1,0 +1,23 @@
+# Example systemd unit. Replace <user> and the paths with your own, then:
+#   sudo cp deploy/local-cogitator-interface.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now local-cogitator-interface
+[Unit]
+Description=Local Cogitator Interface (chat UI for a local agentic harness)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<user>
+WorkingDirectory=/opt/local-cogitator-interface
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

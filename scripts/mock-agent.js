@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /*
- * A tiny stand-in for the Hermes Agent API server, for trying the UI without
- * a real agent. Emits the same SSE shapes Hermes does: chat.completion.chunk
+ * A tiny stand-in for an agentic harness, for trying the UI without a real
+ * agent. It mimics Hermes Agent's API server, the richest protocol the UI
+ * understands: chat.completion.chunk
  * deltas (content + reasoning_content), `hermes.tool.progress` events,
  * `approval.request` events, and the X-Hermes-Session-Id response header.
  *
- *   node scripts/mock-hermes.js            # listens on 127.0.0.1:8642
- *   HERMES_API_KEY=mock npm start          # in another terminal
+ *   npm run mock                           # listens on 127.0.0.1:8642
+ *   AGENT_API_KEY=mock npm start           # in another terminal
  *
  * Mention "sanction" in a message to trigger an approval prompt.
  */
@@ -58,9 +59,13 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end('{"status":"ok"}');
   }
-  if (req.headers.authorization !== `Bearer ${process.env.HERMES_API_KEY || 'mock'}`) {
+  if (req.headers.authorization !== `Bearer ${process.env.AGENT_API_KEY || process.env.HERMES_API_KEY || 'mock'}`) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     return res.end('{"error":{"message":"Invalid API key"}}');
+  }
+  if (url.pathname === '/v1/models') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end('{"object":"list","data":[{"id":"mock-agent","object":"model"}]}');
   }
   const m = url.pathname.match(/^\/v1\/runs\/([^/]+)\/(approval|stop)$/);
   if (m && req.method === 'POST') {
@@ -124,4 +129,4 @@ const server = http.createServer(async (req, res) => {
   res.end();
 });
 
-server.listen(PORT, '127.0.0.1', () => console.log(`Mock Hermes listening on http://127.0.0.1:${PORT}`));
+server.listen(PORT, '127.0.0.1', () => console.log(`Mock agent listening on http://127.0.0.1:${PORT}`));
