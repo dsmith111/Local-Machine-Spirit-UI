@@ -1,72 +1,113 @@
-# Local-Machine-Spirit-UI
+<p align="center">
+  <img src="docs/banner.png" alt="Machine Spirit UI — a self-hosted chat PWA for Hermes Agent and local LLMs" width="100%">
+</p>
 
-A chat UI for your local AI agent ([Hermes Agent](https://github.com/NousResearch/hermes-agent), or anything else that speaks the OpenAI chat API), styled as a grimdark cogitator terminal: brass bezel, phosphor CRT, scanlines, litanies while the machine spirit thinks.
+<p align="center">
+  <b>A self-hosted, installable chat app (PWA) for talking to your local AI agent from your phone.</b><br>
+  Built for <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>, and it also works with any OpenAI-compatible endpoint (Ollama, OpenClaw, …).<br>
+  Styled as a cogitator terminal for communing with its machine spirit.
+</p>
 
-It installs on your phone as a **Progressive Web App**, so you can talk to Hermes from anywhere on your tailnet without setting up Telegram, SMS, or Discord.
-
-> Unofficial fan-styled project. Not affiliated with or endorsed by Games Workshop. No official artwork or logos are used.
-
-## What it does
-
-- **Streams replies** from Hermes token by token, with Markdown, tables, and code blocks (each code block has a copy button).
-- **Shows tool use as "rites"**: when Hermes runs a terminal command, searches the web, and so on, a `[ INVOKING ]` line appears and changes to `[ COMPLETE ]` when it finishes (from Hermes' `hermes.tool.progress` events).
-- **Approval prompts ("Sanction required")**: when Hermes wants to run a dangerous command, it pauses for your approval. You can choose *Grant once*, *Grant for this communion*, *Grant eternally* or *Forbid*. The UI answers through Hermes' `/v1/runs/{id}/approval` endpoint.
-- **Reasoning**: when the model returns reasoning, it appears in a collapsible "Deliberations of the spirit" panel. You can turn this off in settings.
-- **Cease button** stops a run in progress.
-- **Picture attachments**: images are downscaled on the phone and sent as inline images, which Hermes supports.
-- **Conversation archive** saved on the device. Each conversation is tied to its own Hermes session (`X-Hermes-Session-Id`), so Hermes keeps the full history on its side, including tool calls.
-- **Link light**: a status indicator shows whether Hermes is reachable.
-- **Four phosphor colours** (green, amber, crimson, pale blue), an optional boot sequence, and CRT effects you can turn off.
-- **Optional "Ritual speech"** setting: adds a system prompt so Hermes answers in character as a machine spirit while keeping the content accurate.
-- **Installable PWA**: works full-screen from the home screen, the app shell works offline, and you get a notification when a reply or approval request arrives while the app is in the background.
-
-## Architecture
+<p align="center">
+  <code>Node ≥ 18</code> · <code>zero dependencies</code> · <code>no build step</code> · <code>runs on a Raspberry Pi</code> · <code>Tailscale-friendly</code>
+</p>
 
 ```
- Phone (PWA) ──HTTPS over Tailscale──▶ Raspberry Pi
-                                        ├─ tailscale serve :443 → 127.0.0.1:8080
-                                        ├─ Cogitator (node server.js) :8080
-                                        │     serves the PWA + relays /api/hermes/* ──┐
-                                        └─ Hermes gateway API server 127.0.0.1:8642 ◀─┘
-                                               │
-                                               └──▶ Ollama on DGX Spark  http://<spark>:11434/v1
++++ TRANSMISSION BEGINS +++
++++ THOUGHT FOR THE DAY: A SPIRIT HOUSED IN THINE OWN IRON NEED NOT BE LENT TO STRANGERS +++
 ```
 
-The small Node server keeps the Hermes API key on the Pi, so the key never reaches your phone. It also means Hermes needs no CORS setup and can stay bound to localhost. The relay only forwards the few endpoints the UI uses.
+---
 
-**No dependencies:** you need Node.js 18 or newer and nothing else. There is no `npm install` and no build step.
+## ⚙ I. Of the Purpose of This Engine
+*What it is*
 
-## Setup on the Raspberry Pi
+Adept, thy machine spirit already dwells on hardware of thine own. Thou hast Ollama on the great DGX engine and Hermes stirring within a Raspberry Pi. Yet thou art forced to address it through foreign relays: Telegram, SMS, the chattering halls of Discord. This is heresy against good sense.
 
-### 1. Hermes: turn on the API server
+This cogitator gives thee a **dedicated, private chat app for Hermes**. It runs on the same Pi, is reached over your Tailscale network, and installs to your phone's home screen like a native app. Nothing passes through a third-party messaging service.
 
-Add this to `~/.hermes/.env`:
+![Pict-captures of the cogitator: welcome screen, an approval prompt, and a reply](docs/screenshots.png)
+
+---
+
+## ✠ II. The Blessed Functions
+*Features*
+
+| Rite | What it actually does |
+|---|---|
+| **The Spirit Speaks** | Replies stream in token by token, rendered as Markdown with tables, lists and code blocks. Each code block has a copy button. |
+| **Rites Invoked** | When Hermes uses a tool (terminal, web search, files…), a `[ INVOKING ]` line appears and turns to `[ COMPLETE ]` when it finishes. |
+| **Sanction Required** | When Hermes wants to run a dangerous command, it pauses and asks you to *Grant once*, *Grant for this communion*, *Grant eternally*, or *Forbid*. Your answer goes back to Hermes' approval endpoint. |
+| **Deliberations of the Spirit** | When the model returns reasoning, it appears in a collapsible panel. You can turn this off. |
+| **Cease** | Stops a run in progress. |
+| **Pict-Captures** | Attach photos. They are downscaled on the phone and sent to Hermes as images. |
+| **Data-Archives** | Conversations are saved on your device. Each one is tied to its own Hermes session (`X-Hermes-Session-Id`), so Hermes keeps the full history, including tool calls. |
+| **Noosphere Link** | A status light in the header shows whether Hermes is reachable. |
+| **Phosphor Rites** | Choose green, amber, crimson or pale-blue phosphor. Scanlines, flicker and the boot sequence can each be turned off. |
+| **Ritual Speech** *(optional)* | Adds a system prompt so Hermes answers in character as a machine spirit while keeping the content accurate. Off by default. |
+| **Installable** | Works as a full-screen PWA. The app loads offline, and you get a notification when a reply or approval request arrives while the app is in the background. |
+
+---
+
+## ☩ III. The Sacred Schematic
+*Architecture*
+
+```
+┌──────────────┐                        ┌────────────────────── Raspberry Pi ──────────────────────┐
+│ Phone (PWA)  │ ── HTTPS/Tailscale ──▶ │ tailscale serve :443                                     │
+│ "Supplicant" │                        │    │                                                     │
+└──────────────┘                        │    ▼                                                     │
+                                        │ Cogitator (server.js) :8080                              │
+                                        │    ├─ serves the PWA                                     │
+                                        │    └─ relays /api/hermes/* ──▶ Hermes API 127.0.0.1:8642 │
+                                        └──────────────────────────────────────────────────────────┘
+                                                                                    │
+                                                                                    ▼
+                                                              Ollama on DGX Spark (http://<spark>:11434/v1)
+```
+
+The small Node server (`server.js`) does two jobs. It **serves the app** and **relays a short allowlist of requests to Hermes**, adding the API key on the Pi. As a result:
+
+- the Hermes API key never reaches your phone,
+- Hermes needs no CORS settings and stays bound to `127.0.0.1`,
+- an optional passphrase (`COGITATOR_ACCESS_CODE`) adds a second lock.
+
+---
+
+## ☉ IV. The Rites of Installation
+*Setup*
+
+> *"Apply the sacred unguents in the correct order, lest the spirit be vexed."*
+
+### Rite the First: Rouse the Hermes API server
+
+Add this to `~/.hermes/.env` on the Pi:
 
 ```bash
 API_SERVER_ENABLED=true
 API_SERVER_KEY=<a long random string>     # e.g. openssl rand -hex 32
-# Keep the default host 127.0.0.1. Only the cogitator talks to it.
+# Leave the host at its default (127.0.0.1); only the cogitator speaks to it.
 ```
 
-To use the Ollama server on your DGX Spark as Hermes' model, run `hermes model`, choose **Custom endpoint**, and enter `http://<spark-tailnet-name>:11434/v1` (no API key). Hermes needs at least a 64k context window, so run Ollama with `OLLAMA_CONTEXT_LENGTH=64000` or higher.
+To use the DGX Spark's Ollama as Hermes' model, run `hermes model`, choose **Custom endpoint**, and enter `http://<spark-tailnet-name>:11434/v1` (no API key). Hermes needs at least a **64k context window**, so run Ollama with `OLLAMA_CONTEXT_LENGTH=64000` or higher.
 
-Start the gateway with `hermes gateway`, or install it as a service with `hermes gateway install`. Then check it:
+Start the gateway with `hermes gateway`, or install it as a service with `hermes gateway install`. Then check that the spirit stirs:
 
 ```bash
 curl http://127.0.0.1:8642/health        # → {"status": "ok"}
 ```
 
-### 2. Cogitator
+### Rite the Second: Install the cogitator
 
 ```bash
 git clone https://github.com/dsmith111/Local-Machine-Spirit-UI.git
 cd Local-Machine-Spirit-UI
 cp .env.example .env
 nano .env        # set HERMES_API_KEY (same value as API_SERVER_KEY) and COGITATOR_ACCESS_CODE
-npm start
+npm start        # no npm install required
 ```
 
-To run it at boot, edit the `User` and `WorkingDirectory` lines in `deploy/machine-spirit-ui.service` if needed, then:
+To have it wake with the Pi, edit `User` and `WorkingDirectory` in `deploy/machine-spirit-ui.service` if needed, then:
 
 ```bash
 sudo cp deploy/machine-spirit-ui.service /etc/systemd/system/
@@ -74,27 +115,30 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now machine-spirit-ui
 ```
 
-### 3. Expose it on your tailnet with HTTPS
+### Rite the Third: Open the noospheric conduit (Tailscale HTTPS)
 
-PWAs (service worker, install to home screen) require HTTPS. Tailscale can provide a real certificate:
+Installing a PWA requires HTTPS. Tailscale provides a real certificate:
 
 ```bash
 sudo tailscale serve --bg 8080
-tailscale serve status       # shows https://<pi-name>.<tailnet>.ts.net
+tailscale serve status       # → https://<pi-name>.<tailnet>.ts.net
 ```
 
-HTTPS certificates must be enabled for your tailnet in the Tailscale admin console under DNS → HTTPS Certificates.
+HTTPS certificates must be enabled for your tailnet in the Tailscale admin console under **DNS → HTTPS Certificates**.
 
-### 4. Install on your phone
+### Rite the Fourth: Consecrate thy handheld
 
-Open `https://<pi-name>.<tailnet>.ts.net` on your phone.
+Open `https://<pi-name>.<tailnet>.ts.net` on your phone, then:
 
-- **iOS (Safari):** Share → **Add to Home Screen**.
-- **Android (Chrome):** menu → **Install app**.
+- **iOS (Safari):** Share → **Add to Home Screen**
+- **Android (Chrome):** menu → **Install app**
 
-If you set an access cipher, enter it once in the Configuration Rites (gear icon). It is stored on the device.
+If you set an access cipher, enter it once under **Configuration Rites** (the gear icon). The phone remembers it.
 
-## Configuration (`.env`)
+---
+
+## ⛭ V. Configuration Litanies
+*Environment variables (`.env`)*
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -103,35 +147,55 @@ If you set an access cipher, enter it once in the Configuration Rites (gear icon
 | `HERMES_URL` | `http://127.0.0.1:8642` | Hermes API server address |
 | `HERMES_API_KEY` | — | Must match Hermes' `API_SERVER_KEY` |
 | `HERMES_MODEL` | `hermes-agent` | Model name sent to Hermes. Use your profile name if you run a Hermes profile |
-| `COGITATOR_ACCESS_CODE` | — | Optional passphrase the phone must send. Recommended, because Hermes can run shell commands |
+| `COGITATOR_ACCESS_CODE` | — | Optional passphrase the phone must send. **Recommended**, because Hermes can run shell commands |
 
-Real environment variables take precedence over the `.env` file.
+Real environment variables override the `.env` file.
 
-**Other backends:** `HERMES_URL` can point at any OpenAI-compatible `/v1/chat/completions` server, such as Ollama directly (`http://<spark>:11434`) or OpenClaw's OpenAI endpoint. Plain chat works with any of them. Tool rites, sanctions and sessions only light up with Hermes.
+**Lesser spirits:** `HERMES_URL` can point at any OpenAI-compatible `/v1/chat/completions` server, such as Ollama directly (`http://<spark>:11434`) or OpenClaw. Plain chat works with any of them. Rites, sanctions and sessions only light up with Hermes.
 
-## Try it without Hermes
+---
 
-A mock server sends the same events Hermes does, so you can test the UI without the Pi:
+## ⚗ VI. The Simulacrum
+*Try it without Hermes*
+
+A mock server imitates Hermes' streaming, tool and approval events, so you can test the UI on any machine:
 
 ```bash
-npm run mock                                  # fake Hermes on :8642
+npm run mock                                  # false spirit on :8642
 HERMES_API_KEY=mock npm start                 # in another terminal → http://localhost:8080
 ```
 
-Put the word "sanction" in a message to trigger an approval prompt.
+Put the word **"sanction"** in a message to trigger an approval prompt.
 
-## Security notes
+---
 
-- Hermes can run terminal commands on the Pi. Keep the cogitator on your tailnet only: use `tailscale serve`, **not** `tailscale funnel`, and set `COGITATOR_ACCESS_CODE`.
-- The relay only allows a small set of endpoints through: health, models, chat completions, and stop/approval for runs. It adds the bearer token on the server side.
-- Conversation history in the app is stored in the browser's `localStorage` on each device. Use **Purge Archives** in settings to clear it.
+## ☠ VII. Wards Against the Heretek
+*Security*
 
-## Project layout
+- Hermes can **run terminal commands on the Pi**. Keep the cogitator inside your tailnet: use `tailscale serve`, **never** `tailscale funnel`, and set `COGITATOR_ACCESS_CODE`.
+- The relay only forwards a short allowlist of endpoints: health, models, chat completions, and stop/approval for runs. It adds the bearer token on the Pi.
+- Conversation history in the app is stored in each device's `localStorage`. **Purge Archives** in settings clears it.
+
+---
+
+## ⌬ VIII. Index of the Data-Vault
+*Project layout*
 
 ```
-server.js                 zero-dependency static server + Hermes relay
-public/                   the PWA (index.html, styles.css, app.js, markdown.js, sw.js, manifest, icons)
-scripts/mock-hermes.js    fake Hermes for local testing
-scripts/make-icons.js     regenerates PNG icons from icons/icon.svg (needs Playwright)
-deploy/                   systemd unit
+server.js                    zero-dependency static server + Hermes relay
+public/                      the PWA: index.html, styles.css, app.js, markdown.js, sw.js, manifest, icons
+scripts/mock-hermes.js       the simulacrum (fake Hermes for local testing)
+scripts/make-icons.js        regenerates PNG icons from public/icons/icon.svg (needs Playwright)
+scripts/make-readme-art.js   regenerates docs/banner.png and docs/screenshots.png (needs Playwright)
+deploy/                      systemd unit
+docs/                        README art
+```
+
+---
+
+<sub>Unofficial, fan-styled project. It is not affiliated with or endorsed by Games Workshop, and it uses no official artwork, logos or trademarks. The gear sigil is original.</sub>
+
+```
++++ TRANSMISSION ENDS +++
++++ THE MACHINE SPIRIT IS APPEASED +++
 ```
