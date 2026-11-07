@@ -131,7 +131,9 @@ function serveStatic(req, res, urlPath) {
       return res.end('Not found');
     }
     const ext = path.extname(filePath).toLowerCase();
-    const noCache = ext === '.html' || rel === '/sw.js' || ext === '.webmanifest';
+    // App code revalidates on every load so updates reach installed PWAs at once;
+    // only images keep a long cache.
+    const noCache = !['.png', '.svg', '.ico'].includes(ext);
     res.writeHead(200, {
       ...securityHeaders,
       'Content-Type': MIME[ext] || 'application/octet-stream',

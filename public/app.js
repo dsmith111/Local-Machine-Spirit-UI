@@ -456,6 +456,47 @@
     requestAnimationFrame(() => scrollToEnd(true));
   }
 
+  // Update a rendered entry in place instead of swapping it out. Swapping the
+  // whole <section> replays its fade-in on every streamed token (a strobe);
+  // patching keeps unchanged parts untouched and running animations steady.
+  function patchNode(target, fresh) {
+    // Match parts by kind (entry-head, deliberation, rites, status-line,
+    // sanction:N, body, meta-line) so a part appearing or vanishing doesn't
+    // shift the others, and existing elements are never moved or recreated.
+    const keyed = (parent) => {
+      const map = new Map();
+      let sanction = 0;
+      for (const n of parent.childNodes) {
+        if (n.nodeType !== 1) continue;
+        const k = n.classList.contains('sanction') ? `sanction:${sanction++}` : n.classList[0] || n.tagName;
+        map.set(k, n);
+      }
+      return map;
+    };
+    const prev = keyed(target);
+    const next = keyed(fresh);
+    for (const [k, o] of prev) if (!next.has(k)) o.remove();
+    let cursor = target.firstElementChild;
+    for (const [k, n] of next) {
+      const o = prev.get(k);
+      let keep = null;
+      if (o && o.isEqualNode(n)) keep = o;
+      else if (o && o.tagName === n.tagName && !k.startsWith('sanction') && k !== 'meta-line') {
+        // Parts with click handlers (sanction, meta-line) are replaced; the rest are updated in place.
+        if (o.className !== n.className) o.className = n.className;
+        if (o.innerHTML !== n.innerHTML) o.innerHTML = n.innerHTML;
+        keep = o;
+      } else if (o) {
+        o.replaceWith(n);
+        keep = n;
+      } else {
+        target.insertBefore(n, cursor);
+        keep = n;
+      }
+      cursor = keep.nextElementSibling;
+    }
+  }
+
   async function copyText(text, btn) {
     try {
       await navigator.clipboard.writeText(text);
@@ -718,14 +759,7 @@
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const fresh = renderMessage(spirit, { streaming: true });
-        const openState = node.querySelector('details.deliberation')?.open;
-        if (openState != null) {
-          const d = fresh.querySelector('details.deliberation');
-          if (d) d.open = openState;
-        }
-        node.replaceWith(fresh);
-        node = fresh;
+        patchNode(node, renderMessage(spirit, { streaming: true }));
         scrollToEnd();
       });
     };
@@ -843,9 +877,7 @@
       delete spirit.litany;
       delete spirit.status;
       conv.messages.push(spirit);
-      const finalNode = renderMessage(spirit);
-      node.replaceWith(finalNode);
-      node = finalNode;
+      patchNode(node, renderMessage(spirit));
     } else {
       node.remove();
     }
