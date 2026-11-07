@@ -1,0 +1,14 @@
+{
+  "name": "local-machine-spirit-ui",
+  "version": "1.0.0",
+  "description": "A cogitator-themed PWA for chatting with a local Hermes Agent (or any OpenAI-compatible endpoint).",
+  "private": true,
+  "license": "MIT",
+  "main": "server.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "mock": "node scripts/mock-hermes.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/markdown.js && node --check public/sw.js"
+  }
+}
