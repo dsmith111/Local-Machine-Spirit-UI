@@ -24,7 +24,7 @@ const banner = `<!doctype html><html><head>${fonts}<style>
   .sig svg{width:100%;height:100%}
   .txt{color:#5dff8f;text-shadow:0 0 10px rgba(93,255,143,.55)}
   .pre{font-family:'VT323';font-size:26px;letter-spacing:.2em;color:#2a9b55}
-  h1{margin:4px 0 6px;font-family:Cinzel;font-weight:800;font-size:58px;letter-spacing:.14em;line-height:1}
+  h1{margin:4px 0 6px;font-family:Cinzel;font-weight:800;font-size:44px;letter-spacing:.07em;white-space:nowrap;line-height:1}
   .sub{font-size:23px;letter-spacing:.06em;color:#9dffbf}
   .meta{margin-top:16px;font-family:'VT323';font-size:24px;letter-spacing:.12em;color:#2a9b55}
   .meta b{color:#5dff8f;font-weight:normal}
@@ -35,10 +35,9 @@ const banner = `<!doctype html><html><head>${fonts}<style>
   <div class="screen">
     <div class="sig">${sigil}</div>
     <div class="txt">
-      <div class="pre">+++ COGITATOR TERMINAL // ROM VERIFIED +++</div>
-      <h1>MACHINE SPIRIT UI</h1>
-      <div class="sub">A self-hosted chat PWA for Hermes Agent &amp; local LLMs</div>
-      <div class="meta">PHONE <b>⟶</b> TAILSCALE <b>⟶</b> RASPBERRY PI <b>⟶</b> HERMES <b>⟶</b> OLLAMA</div>
+      <div class="pre">+++ MACHINE SPIRIT ACCESS POINT // ROM VERIFIED +++</div>
+      <h1>LOCAL COGITATOR INTERFACE</h1>
+      <div class="sub">A self-hosted chat UI for local agents</div>
     </div>
   </div>
 </div></body></html>`;

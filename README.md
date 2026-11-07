@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Machine Spirit UI — a self-hosted chat PWA for Hermes Agent and local LLMs" width="100%">
+  <img src="docs/banner.png" alt="Local Cogitator Interface — a self-hosted chat UI for local agents" width="100%">
 </p>
 
 <p align="center">
