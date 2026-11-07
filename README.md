@@ -12,6 +12,10 @@
   <code>Node ≥ 18</code> · <code>zero dependencies</code> · <code>no build step</code> · <code>runs anywhere Node runs</code> · <code>OpenAI-compatible</code>
 </p>
 
+<p align="center">
+  <a href="#-v-the-rites-of-installation">Installation</a> · <a href="#-vi-configuration-litanies">Configuration</a> · <a href="docs/TROUBLESHOOTING.md"><b>Troubleshooting</b></a>
+</p>
+
 ```
 +++ TRANSMISSION BEGINS +++
 +++ THOUGHT FOR THE DAY: A SPIRIT HOUSED IN THINE OWN IRON NEED NOT BE LENT TO STRANGERS +++
@@ -113,7 +117,11 @@ API_SERVER_KEY=<a long random string>     # e.g. openssl rand -hex 32
 # Leave the host at its default (127.0.0.1) if the cogitator runs on the same machine.
 ```
 
-Start the gateway with `hermes gateway`, or install it as a service with `hermes gateway install`. Then check it with `curl http://127.0.0.1:8642/health`, which should return `{"status": "ok"}`.
+The key must be **at least 16 characters and not a placeholder** (such as `changeme`). Otherwise Hermes silently refuses to open the API port. Named profiles use `~/.hermes/profiles/<name>/.env` instead.
+
+Start the gateway with `hermes gateway`, or install it as a service with `hermes gateway install`. Restart it (`hermes gateway restart`) after any `.env` change. Then check it with `curl http://127.0.0.1:8642/health`, which should return `{"status": "ok"}`.
+
+Nothing listening on 8642? See [Hermes Agent specifics](docs/TROUBLESHOOTING.md#iv-hermes-agent-specifics) in the troubleshooting guide, which also has a one-command key setup.
 
 Hermes can use any model provider, including a local Ollama or vLLM server elsewhere on your network (`hermes model` → **Custom endpoint**). It needs at least a 64k context window.
 
@@ -132,7 +140,7 @@ npm start        # no npm install required
 `npm start` runs in the foreground: it holds the terminal and stops when you press Ctrl+C or close it. That's handy for a first test. To keep the cogitator running in the background and start it at boot on a Linux machine with systemd, run the installer from the project folder:
 
 ```bash
-./scripts/install-service.sh
+./scripts/install-service.sh        # or: npm run service:install
 ```
 
 It fills in your user, the project folder, and the full path to `node` (so installs via nvm, fnm or asdf work too), then starts the service and prints its status. Run it again after moving the folder or upgrading Node.
@@ -144,20 +152,15 @@ sudo systemctl restart local-cogitator-interface    # after editing .env or pull
 ./scripts/install-service.sh --uninstall            # remove it
 ```
 
-<details>
-<summary><b>Service won't start?</b></summary>
+Service won't start? The log tells you why: `journalctl -u local-cogitator-interface -n 50`. Common causes and fixes are in [Running the cogitator](docs/TROUBLESHOOTING.md#i-running-the-cogitator). Not on systemd? Any process manager that runs `node server.js` in the project folder works (pm2, launchd, Docker).
 
-- Check the logs first: `journalctl -u local-cogitator-interface -n 50`.
-- `status=217/USER` or `status=200/CHDIR`: the unit still has placeholder values. Re-run `./scripts/install-service.sh` instead of copying `deploy/local-cogitator-interface.service` by hand.
-- `status=203/EXEC` or `node: No such file`: systemd can't see your Node install. Re-run the installer, or set the path explicitly: `NODE_BIN=$(which node) ./scripts/install-service.sh`.
-- `EADDRINUSE`: something else is already on port 8080. Often it's a forgotten `npm start` in another terminal. Stop it, or change `PORT` in `.env`.
-- Not on systemd (macOS, Windows, containers)? Use pm2 (`npx pm2 start server.js --name cogitator`), launchd, or Docker instead.
+### Rite the Third: Open the noospheric conduit
 
-</details>
+Choose how your devices will reach the cogitator.
 
-### Rite the Third: Open the noospheric conduit (HTTPS)
+**Option A: plain local network (simplest).** Set `HOST=0.0.0.0` in `.env`, restart, and open `http://<host-ip>:8080` on your phone. Type the `http://`, or the browser may try HTTPS and fail. Chat works fully, but browsers only grant full app features to HTTPS sites: offline mode, notifications and Android's **Install app** need option B. Only do this on a network you trust, with `COGITATOR_ACCESS_CODE` set.
 
-Installing a PWA requires HTTPS (plain `http://localhost` is fine for testing). Put any reverse proxy with a valid certificate in front of port 8080. Make sure it doesn't buffer responses, or streaming replies will arrive all at once.
+**Option B: HTTPS (recommended).** Put any reverse proxy with a valid certificate in front of port 8080 and keep `HOST=127.0.0.1`. Make sure the proxy doesn't buffer responses, or streaming replies will arrive all at once.
 
 <details>
 <summary><b>Tailscale</b> (private to your tailnet)</summary>
@@ -200,12 +203,22 @@ location / {
 
 ### Rite the Fourth: Consecrate thy handheld
 
-Open your HTTPS address on your phone, then:
+Open the cogitator's address on your phone, then:
 
 - **iOS (Safari):** Share → **Add to Home Screen**
 - **Android (Chrome):** menu → **Install app**
 
 If you set an access cipher, enter it once under **Configuration Rites** (the gear icon). The device remembers it. This is also where you rename the spirit, so the header can show your agent's name.
+
+Can't connect? See [Reaching it from your phone](docs/TROUBLESHOOTING.md#ii-reaching-it-from-your-phone).
+
+### Rite of Renewal: Updating
+
+```bash
+git pull && sudo systemctl restart local-cogitator-interface
+```
+
+Then fully close and reopen the app on each device. The build number at the bottom of **Configuration Rites** shows which version a device is running.
 
 ---
 
@@ -214,14 +227,14 @@ If you set an access cipher, enter it once under **Configuration Rites** (the ge
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HOST` | `127.0.0.1` | Address the cogitator listens on. Use `0.0.0.0` only if your HTTPS proxy runs on another machine |
+| `HOST` | `127.0.0.1` | Address the cogitator listens on. Keep `127.0.0.1` behind a proxy on the same machine. Use `0.0.0.0` to reach it directly over your local network (option A), or when the proxy runs on another machine |
 | `PORT` | `8080` | Port the cogitator listens on |
 | `AGENT_URL` | `http://127.0.0.1:8642` | Base URL of your harness's OpenAI-compatible API (without `/v1`) |
 | `AGENT_API_KEY` | — | Bearer token the harness expects, if any |
 | `AGENT_MODEL` | *first entry of `/v1/models`* | Model name sent with each request |
 | `COGITATOR_ACCESS_CODE` | — | Optional passphrase each device must send. **Strongly recommended** if your agent can run tools |
 
-Real environment variables override the `.env` file. `HERMES_URL`, `HERMES_API_KEY` and `HERMES_MODEL` are still accepted as aliases.
+Real environment variables override the `.env` file, and `.env` is only read at startup, so restart after editing it. `HERMES_URL`, `HERMES_API_KEY` and `HERMES_MODEL` are still accepted as aliases.
 
 ---
 
@@ -267,7 +280,21 @@ Put the word **"sanction"** in a message to trigger an approval prompt.
 
 ---
 
-## ⌬ X. Index of the Data-Vault
+## ⚕ X. When the Spirit Is Troubled
+*Troubleshooting*
+
+The **[Codex of Malfunctions](docs/TROUBLESHOOTING.md)** lists each problem with its cause and fix, covering:
+
+- [Running the cogitator](docs/TROUBLESHOOTING.md#i-running-the-cogitator): `npm start` holding the terminal, service errors (`217/USER`, `203/EXEC`, `EADDRINUSE`)
+- [Reaching it from your phone](docs/TROUBLESHOOTING.md#ii-reaching-it-from-your-phone): pages that won't load, `HOST`, firewalls, HTTP vs HTTPS
+- [Connecting to your harness](docs/TROUBLESHOOTING.md#iii-connecting-to-your-harness): red status light, key mismatches, model names
+- [Hermes Agent specifics](docs/TROUBLESHOOTING.md#iv-hermes-agent-specifics): API server not listening, key strength, a one-command key setup
+- [Chatting](docs/TROUBLESHOOTING.md#v-chatting): buffered streaming, timeouts, missing tool lines
+- [The installed app](docs/TROUBLESHOOTING.md#vi-the-installed-app-pwa): stale versions, the iOS 26 edge strip, notifications
+
+---
+
+## ⌬ XI. Index of the Data-Vault
 *Project layout*
 
 ```
@@ -276,8 +303,9 @@ public/                      the PWA: index.html, styles.css, app.js, markdown.j
 scripts/mock-agent.js        the simulacrum (fake harness for local testing)
 scripts/make-icons.js        regenerates PNG icons from public/icons/icon.svg (needs Playwright)
 scripts/make-readme-art.js   regenerates docs/banner.png and docs/screenshots.png (needs Playwright)
-scripts/install-service.sh    installs and starts the systemd service
+scripts/install-service.sh   installs, starts or removes the systemd service (--print, --uninstall)
 deploy/                      example systemd unit (reference; the installer writes the real one)
+docs/TROUBLESHOOTING.md      the Codex of Malfunctions
 docs/                        README art
 ```
 
