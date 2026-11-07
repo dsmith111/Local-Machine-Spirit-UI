@@ -10,6 +10,8 @@
   // -------------------------------------------------------------------------
   // Storage
   // -------------------------------------------------------------------------
+  // Keep in step with the ?v= query strings in index.html.
+  const BUILD = '2026.11.07-r4';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -139,6 +141,7 @@
   }
 
   function openSettings(message) {
+    $('#build-tag').textContent = BUILD;
     $('#set-access').value = settings.accessCode;
     $('#set-name').value = settings.name;
     $('#set-phosphor').value = settings.phosphor;

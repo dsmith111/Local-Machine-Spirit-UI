@@ -1,6 +1,6 @@
 /* Cogitator service worker: caches the app shell so the PWA opens instantly
  * and offline. API traffic (/api/*) is never cached. */
-const VERSION = 'cogitator-v2';
+const VERSION = 'cogitator-v3';
 const SHELL = [
   './',
   'index.html',
@@ -51,8 +51,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // App shell: network-first (so updates land), falling back to cache offline.
+  // cache: 'no-cache' makes the browser revalidate instead of using a stale HTTP copy.
   event.respondWith(
-    fetch(req)
+    // (A navigation Request can't be re-initialised with options, so fetch its URL.)
+    fetch(req.mode === 'navigate' ? req.url : req, { cache: 'no-cache' })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
@@ -60,7 +62,7 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       })
-      .catch(async () => (await caches.match(req)) || (req.mode === 'navigate' ? caches.match('index.html') : Response.error())),
+      .catch(async () => (await caches.match(req, { ignoreSearch: true })) || (req.mode === 'navigate' ? caches.match('index.html') : Response.error())),
   );
 });
 

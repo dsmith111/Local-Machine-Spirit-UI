@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Share+Tech+Mono&family=VT323&display=swap">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2026.11.07-r4">
 </head>
 <body>
   <div class="bezel">
@@ -39,6 +39,7 @@
 
     <main class="screen" id="screen">
       <div class="scanlines" aria-hidden="true"></div>
+      <div class="flicker" aria-hidden="true"></div>
       <div class="vignette" aria-hidden="true"></div>
       <div class="log" id="log" role="log" aria-live="polite"></div>
     </main>
@@ -107,6 +108,7 @@
         <button value="cancel" class="rite-btn ghost">Dismiss</button>
         <button value="save" class="rite-btn" id="btn-save-settings">Sanctify</button>
       </div>
+      <p class="build-tag">Cogitator build <span id="build-tag"></span></p>
     </form>
   </dialog>
 
@@ -122,7 +124,7 @@
     </symbol>
   </svg>
 
-  <script src="markdown.js"></script>
-  <script src="app.js"></script>
+  <script src="markdown.js?v=2026.11.07-r4"></script>
+  <script src="app.js?v=2026.11.07-r4"></script>
 </body>
 </html>

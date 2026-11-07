@@ -206,16 +206,20 @@ button, input, textarea, select { font: inherit; color: inherit; }
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 16px 14px 24px;
-  scroll-behavior: smooth;
   text-shadow: 0 0 6px var(--phos-glow);
   scrollbar-width: thin;
   scrollbar-color: var(--phos-dim) transparent;
 }
 .scanlines, .vignette { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 .scanlines {
-  background: repeating-linear-gradient(180deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.28) 2px 3px);
-  mix-blend-mode: multiply;
+  /* Plain translucent stripes; no blend mode (blend modes make Safari repaint
+     the text layer underneath, which shows up as flashing while text streams). */
+  background: repeating-linear-gradient(180deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.25) 2px 3px);
 }
+/* CRT brightness flicker lives on its own overlay, so the text layer itself is
+   never animated (animating the text container made WebKit flash it on updates). */
+.flicker { position: absolute; inset: 0; pointer-events: none; z-index: 2; background: #000; opacity: 0; }
+html:not(.fx) .flicker { display: none; }
 .vignette {
   background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%);
 }
@@ -228,21 +232,24 @@ html.fx .screen::after {
   height: 30%;
   animation: roll 7s linear infinite;
 }
-html.fx .log { animation: flicker 6s infinite; }
+html.fx .flicker { animation: flicker 6s infinite; }
 html:not(.fx) .scanlines { display: none; }
 @keyframes roll { from { transform: translateY(-100%); } to { transform: translateY(400%); } }
 @keyframes flicker {
-  0%, 100% { opacity: 1; }
-  41% { opacity: 1; } 42% { opacity: 0.92; } 43% { opacity: 1; }
-  77% { opacity: 0.96; } 78% { opacity: 1; }
+  0%, 41%, 43%, 77%, 78%, 100% { opacity: 0; }
+  42% { opacity: 0.08; }
+  77.5% { opacity: 0.04; }
 }
 @media (prefers-reduced-motion: reduce) {
-  html.fx .screen::after, html.fx .log, .sigil { animation: none; }
+  html.fx .screen::after, html.fx .flicker, .sigil { animation: none; }
 }
 
 /* ---------- Log entries ---------- */
-.entry { margin: 0 0 18px; animation: materialize 0.25s ease-out; }
-@keyframes materialize { from { opacity: 0; filter: blur(2px); } to { opacity: 1; filter: none; } }
+.entry { margin: 0 0 18px; }
+/* Only your own messages fade in. Replies never animate, so streaming text
+   and changing litanies can't flash, however the page is updated. */
+.entry.user { animation: materialize 0.2s ease-out; }
+@keyframes materialize { from { opacity: 0; } to { opacity: 1; } }
 
 .entry-head {
   display: flex;
@@ -594,3 +601,5 @@ dialog::backdrop { background: rgba(0,0,0,0.7); }
   .log { padding: 22px 26px 30px; }
   body { font-size: 17px; }
 }
+
+.build-tag { margin: 0; font-size: 0.72rem; letter-spacing: 0.08em; color: #8a7655; text-align: right; }
