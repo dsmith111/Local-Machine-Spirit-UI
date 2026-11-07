@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.07-r4';
+  const BUILD = '2026.11.07-r5';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -137,7 +137,7 @@
     el.spiritName.textContent = name.toUpperCase();
     document.title = `${name} · Cogitator`;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = '#050806';
+    if (meta) meta.content = '#1d1811';
   }
 
   function openSettings(message) {

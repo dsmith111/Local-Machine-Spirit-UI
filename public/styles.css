@@ -58,12 +58,18 @@ html[data-phosphor='ice'] {
 [hidden] { display: none !important; }
 html, body { height: 100%; }
 
+/* The whole screen is the cogitator's iron casing, so on a full-screen PWA the
+   status-bar and home-indicator strips read as part of the machine, not black. */
+html { background: #15120d; }
 body {
   margin: 0;
+  min-height: 100dvh;
   background:
-    radial-gradient(ellipse at 50% -20%, #2a2318 0%, transparent 60%),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0 2px, transparent 2px 5px),
-    var(--void);
+    radial-gradient(ellipse 90% 40% at 50% 0%, rgba(227,197,139,0.13), transparent 70%),
+    radial-gradient(ellipse 90% 35% at 50% 100%, rgba(179,38,30,0.14), transparent 70%),
+    repeating-linear-gradient(90deg, rgba(255,240,210,0.022) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #221d15 0%, #15120d 45%, #1c1711 100%);
   color: var(--phos);
   font-family: var(--font-term);
   font-size: 16px;
@@ -603,3 +609,43 @@ dialog::backdrop { background: rgba(0,0,0,0.7); }
 }
 
 .build-tag { margin: 0; font-size: 0.72rem; letter-spacing: 0.08em; color: #8a7655; text-align: right; }
+
+/* ---------- Casing: status-bar hood and home-indicator foot ---------- */
+/* Both are sized by the device's safe-area insets, so they vanish (height 0)
+   in an ordinary browser tab and only appear in the full-screen PWA. */
+.hood, .foot {
+  position: fixed;
+  left: 0; right: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.hood {
+  top: 0;
+  height: calc(var(--safe-top) + 3px);
+  background:
+    /* brass trim along the lower edge */
+    linear-gradient(180deg, transparent calc(100% - 3px), #e3c58b calc(100% - 3px), #8a6a38 calc(100% - 1px), #2a1e0e calc(100% - 1px)),
+    /* rivets in the corners, clear of the clock and battery */
+    radial-gradient(circle at 10px calc(100% - 12px), #e9cf96 0 2px, #5c4423 2.5px 3.5px, transparent 4px),
+    radial-gradient(circle at calc(100% - 10px) calc(100% - 12px), #e9cf96 0 2px, #5c4423 2.5px 3.5px, transparent 4px),
+    /* brushed dark bronze: dark enough for the white status-bar text */
+    repeating-linear-gradient(90deg, rgba(255,230,180,0.035) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #0d0a06 0%, #241a0e 70%, #33250f 100%);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+.foot {
+  bottom: 0;
+  height: calc(var(--safe-bottom) + 3px);
+  background:
+    /* brass trim along the upper edge */
+    linear-gradient(0deg, transparent calc(100% - 3px), #8a6a38 calc(100% - 3px), #e3c58b calc(100% - 1px), #f2dcaa calc(100% - 1px)),
+    /* indicator lamps: green = motive force, red = vigilance */
+    radial-gradient(circle at 18px 55%, #9dffbf 0 1.5px, #2bd96b 2px 3px, rgba(43,217,107,0.35) 4px, transparent 7px),
+    radial-gradient(circle at calc(100% - 18px) 55%, #ffb3a8 0 1.5px, #e0281c 2px 3px, rgba(224,40,28,0.35) 4px, transparent 7px),
+    /* vent grille, centred under the home indicator */
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.75) 0 3px, rgba(255,220,160,0.10) 3px 4px, transparent 4px 9px) center 62% / 46% 9px no-repeat,
+    repeating-linear-gradient(90deg, rgba(255,230,180,0.03) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #2b2216 0%, #16120c 100%);
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.6);
+}
+.bezel { position: relative; z-index: 1; }
