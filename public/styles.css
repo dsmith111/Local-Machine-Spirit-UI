@@ -60,7 +60,9 @@ html, body { height: 100%; }
 
 /* The whole screen is the cogitator's iron casing, so on a full-screen PWA the
    status-bar and home-indicator strips read as part of the machine, not black. */
-html { background: #15120d; }
+/* Same colour as the bottom of .foot: whatever iOS paints below the viewport
+   (see .foot) blends into it seamlessly. */
+html { background: #100d09; }
 body {
   margin: 0;
   min-height: 100dvh;
@@ -632,16 +634,21 @@ dialog::backdrop { background: rgba(0,0,0,0.7); }
   /* no trim or shadow: fades straight into the casing below */
 }
 .foot {
-  bottom: 0;
-  height: calc(var(--safe-bottom) + 3px);
+  /* iOS 26 standalone apps can report a viewport that stops short of the real
+     screen bottom. Run the plate 120px past the bottom edge so it covers that
+     strip if iOS paints it; the html background below matches it if not.
+     Decorations are positioned from the top so they stay where they were. */
+  --foot-h: calc(var(--safe-bottom) + 3px);
+  bottom: -120px;
+  height: calc(var(--foot-h) + 120px);
   background:
     /* indicator lamps: green = motive force, red = vigilance */
-    radial-gradient(circle at 18px 55%, #9dffbf 0 1.5px, #2bd96b 2px 3px, rgba(43,217,107,0.35) 4px, transparent 7px),
-    radial-gradient(circle at calc(100% - 18px) 55%, #ffb3a8 0 1.5px, #e0281c 2px 3px, rgba(224,40,28,0.35) 4px, transparent 7px),
+    radial-gradient(circle at 18px calc(var(--foot-h) * 0.55), #9dffbf 0 1.5px, #2bd96b 2px 3px, rgba(43,217,107,0.35) 4px, transparent 7px),
+    radial-gradient(circle at calc(100% - 18px) calc(var(--foot-h) * 0.55), #ffb3a8 0 1.5px, #e0281c 2px 3px, rgba(224,40,28,0.35) 4px, transparent 7px),
     /* vent grille, centred under the home indicator */
-    repeating-linear-gradient(90deg, rgba(0,0,0,0.75) 0 3px, rgba(255,220,160,0.10) 3px 4px, transparent 4px 9px) center 62% / 46% 9px no-repeat,
+    repeating-linear-gradient(90deg, rgba(0,0,0,0.75) 0 3px, rgba(255,220,160,0.10) 3px 4px, transparent 4px 9px) center calc(var(--foot-h) * 0.62 - 4px) / 46% 9px no-repeat,
     repeating-linear-gradient(90deg, rgba(255,230,180,0.03) 0 1px, transparent 1px 3px),
-    linear-gradient(180deg, rgba(28,23,17,0) 0%, rgba(18,14,10,0.8) 45%, #100d09 100%);
+    linear-gradient(180deg, rgba(28,23,17,0) 0, rgba(18,14,10,0.8) calc(var(--foot-h) * 0.45), #100d09 var(--foot-h), #100d09 100%);
   /* no trim or shadow: fades up into the casing above */
 }
 .bezel { position: relative; z-index: 1; }
