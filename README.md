@@ -129,13 +129,31 @@ nano .env        # set AGENT_URL, AGENT_API_KEY (if any) and COGITATOR_ACCESS_CO
 npm start        # no npm install required
 ```
 
-To keep it running, use whatever process manager you like. An example systemd unit is in `deploy/local-cogitator-interface.service`. Fill in the user and path, then:
+`npm start` runs in the foreground: it holds the terminal and stops when you press Ctrl+C or close it. That's handy for a first test. To keep the cogitator running in the background and start it at boot on a Linux machine with systemd, run the installer from the project folder:
 
 ```bash
-sudo cp deploy/local-cogitator-interface.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now local-cogitator-interface
+./scripts/install-service.sh
 ```
+
+It fills in your user, the project folder, and the full path to `node` (so installs via nvm, fnm or asdf work too), then starts the service and prints its status. Run it again after moving the folder or upgrading Node.
+
+```bash
+systemctl status local-cogitator-interface          # is it running?
+journalctl -u local-cogitator-interface -f          # live logs
+sudo systemctl restart local-cogitator-interface    # after editing .env or pulling updates
+./scripts/install-service.sh --uninstall            # remove it
+```
+
+<details>
+<summary><b>Service won't start?</b></summary>
+
+- Check the logs first: `journalctl -u local-cogitator-interface -n 50`.
+- `status=217/USER` or `status=200/CHDIR`: the unit still has placeholder values. Re-run `./scripts/install-service.sh` instead of copying `deploy/local-cogitator-interface.service` by hand.
+- `status=203/EXEC` or `node: No such file`: systemd can't see your Node install. Re-run the installer, or set the path explicitly: `NODE_BIN=$(which node) ./scripts/install-service.sh`.
+- `EADDRINUSE`: something else is already on port 8080. Often it's a forgotten `npm start` in another terminal. Stop it, or change `PORT` in `.env`.
+- Not on systemd (macOS, Windows, containers)? Use pm2 (`npx pm2 start server.js --name cogitator`), launchd, or Docker instead.
+
+</details>
 
 ### Rite the Third: Open the noospheric conduit (HTTPS)
 
@@ -258,7 +276,8 @@ public/                      the PWA: index.html, styles.css, app.js, markdown.j
 scripts/mock-agent.js        the simulacrum (fake harness for local testing)
 scripts/make-icons.js        regenerates PNG icons from public/icons/icon.svg (needs Playwright)
 scripts/make-readme-art.js   regenerates docs/banner.png and docs/screenshots.png (needs Playwright)
-deploy/                      example systemd unit
+scripts/install-service.sh    installs and starts the systemd service
+deploy/                      example systemd unit (reference; the installer writes the real one)
 docs/                        README art
 ```
 

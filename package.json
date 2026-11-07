@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "mock": "node scripts/mock-agent.js",
+    "service:install": "./scripts/install-service.sh",
     "check": "node --check server.js && node --check public/app.js && node --check public/markdown.js && node --check public/sw.js && node --check scripts/mock-agent.js"
   }
 }

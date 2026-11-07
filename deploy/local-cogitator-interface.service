@@ -1,7 +1,8 @@
-# Example systemd unit. Replace <user> and the paths with your own, then:
-#   sudo cp deploy/local-cogitator-interface.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now local-cogitator-interface
+# Reference systemd unit. You normally don't need this file:
+#   ./scripts/install-service.sh
+# writes a filled-in copy to /etc/systemd/system and starts it.
+# To install by hand instead, replace <user>, the paths, and the node path
+# (run `which node`; systemd won't find nvm installs via /usr/bin/env).
 [Unit]
 Description=Local Cogitator Interface (chat UI for a local agentic harness)
 After=network-online.target
