@@ -49,10 +49,25 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 | **Noosphere Link** | A status light in the header shows whether the harness is reachable. | Any (`/health`, else `/v1/models`) |
 | **Phosphor Rites** | Choose green, amber, crimson or pale-blue phosphor. Scanlines, flicker and the boot sequence can each be turned off. | — |
 | **Ritual Speech** *(optional)* | Adds a system prompt so the agent answers in character as a machine spirit while keeping the content accurate. Off by default. | Any |
-| **Installable** | Works as a full-screen PWA. The app loads offline, and you get a notification when a reply or approval request arrives while the app is in the background. | — |
+| **Installable** | Works as a full-screen PWA with its own icon, and the app loads offline. | HTTPS |
+| **Summonings** | Push notifications when you're away: an answer is ready, a sanction (approval) is needed, or a rite failed. Tap one to open that conversation. Never sent while you're looking at the app. | HTTPS ([details](#-summonings-notifications)) |
+| **Unbroken Rites** | Lock your phone or close the app mid-reply: the server keeps the run going, and the app reconnects and replays it when you return. **Cease** is the only thing that stops a run. | Any |
 | **Rites Invoked** | When the agent uses a tool (terminal, web search, files…), a `[ INVOKING ]` line appears and turns to `[ COMPLETE ]` when it finishes. | Extended |
 | **Sanction Required** | When the agent wants to run a dangerous command, it pauses and asks you to *Grant once*, *Grant for this communion*, *Grant eternally*, or *Forbid*. | Extended |
 | **Server-side memory** | Each conversation is tied to a harness session, so the agent keeps the full history, including tool calls. | Extended |
+
+### ✉ Summonings (notifications)
+
+The cogitator sends real push notifications through your phone's push service (Apple, Google or Mozilla), so they arrive even when the app is closed. Messages are end-to-end encrypted ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)): the push service only relays ciphertext. No account or third-party package is involved; the server generates its own keys on first start.
+
+**Requirements:**
+- The cogitator is served over **HTTPS** (see [Rite the Third](#rite-the-third-open-the-noospheric-conduit)). Browsers don't allow push on plain `http://` network addresses.
+- On iPhone/iPad: iOS 16.4 or later, with the app **added to the Home Screen** and opened from there.
+- The host can reach the internet (to deliver to the push service).
+
+**To enable:** open **Configuration Rites** → **Summonings** → **Enable summonings**, allow notifications, then tap **Send test**. Choose which events summon you and whether notifications include a preview of the message. Each device is enabled separately.
+
+You're notified only when you're away: if the device that started a run is looking at the app, it stays quiet. A tapped notification opens its conversation, and the app icon shows a badge until you open the app.
 
 ---
 
@@ -233,6 +248,8 @@ Then fully close and reopen the app on each device. The build number at the bott
 | `AGENT_API_KEY` | — | Bearer token the harness expects, if any |
 | `AGENT_MODEL` | *first entry of `/v1/models`* | Model name sent with each request |
 | `COGITATOR_ACCESS_CODE` | — | Optional passphrase each device must send. **Strongly recommended** if your agent can run tools |
+| `DATA_DIR` | `data` | Where push keys and device subscriptions are stored (created on first start) |
+| `VAPID_SUBJECT` | *this project's URL* | Contact sent to push services, as an `https:` URL or `mailto:` address |
 
 Real environment variables override the `.env` file, and `.env` is only read at startup, so restart after editing it. `HERMES_URL`, `HERMES_API_KEY` and `HERMES_MODEL` are still accepted as aliases.
 
@@ -277,6 +294,8 @@ Put the word **"sanction"** in a message to trigger an approval prompt.
 - An agentic harness may be able to **run commands on its host**. Keep the cogitator on a private network or VPN, and set `COGITATOR_ACCESS_CODE`.
 - The relay only forwards a short allowlist of endpoints: health, models, chat completions, and stop/approval for runs. It adds the bearer token on the server.
 - Conversation history in the app is stored in each device's `localStorage`. **Purge Archives** in settings clears it.
+- `data/` holds the server's private push key and your devices' push subscriptions. It's created with owner-only permissions and ignored by git. Don't share it. Deleting it just means each device has to enable summonings again.
+- Runs are kept in the server's memory for an hour after they finish, so devices can reconnect to them. Restarting the service clears them.
 
 ---
 
@@ -290,7 +309,8 @@ The **[Codex of Malfunctions](docs/TROUBLESHOOTING.md)** lists each problem with
 - [Connecting to your harness](docs/TROUBLESHOOTING.md#iii-connecting-to-your-harness): red status light, key mismatches, model names
 - [Hermes Agent specifics](docs/TROUBLESHOOTING.md#iv-hermes-agent-specifics): API server not listening, key strength, a one-command key setup
 - [Chatting](docs/TROUBLESHOOTING.md#v-chatting): buffered streaming, timeouts, missing tool lines
-- [The installed app](docs/TROUBLESHOOTING.md#vi-the-installed-app-pwa): stale versions, the iOS 26 edge strip, notifications
+- [The installed app](docs/TROUBLESHOOTING.md#vi-the-installed-app-pwa): stale versions, the iOS 26 edge strip
+- [Summonings](docs/TROUBLESHOOTING.md#vii-summonings-notifications): enabling notifications, tests that don't arrive, unwanted notifications
 
 ---
 
@@ -303,9 +323,14 @@ public/                      the PWA: index.html, styles.css, app.js, markdown.j
 scripts/mock-agent.js        the simulacrum (fake harness for local testing)
 scripts/make-icons.js        regenerates PNG icons from public/icons/icon.svg (needs Playwright)
 scripts/make-readme-art.js   regenerates docs/banner.png and docs/screenshots.png (needs Playwright)
+lib/runs.js                  keeps runs going when a device leaves; reconnect and replay
+lib/notify.js                push subscriptions, presence, and when to notify
+lib/webpush.js               Web Push encryption and signing (node:crypto only)
+test/                        unit tests (npm test)
 scripts/install-service.sh   installs, starts or removes the systemd service (--print, --uninstall)
 deploy/                      example systemd unit (reference; the installer writes the real one)
 docs/TROUBLESHOOTING.md      the Codex of Malfunctions
+data/                        created at runtime: push keys and subscriptions (git-ignored)
 docs/                        README art
 ```
 

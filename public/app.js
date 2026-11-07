@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.07-r7';
+  const BUILD = '2026.11.08-r8';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -45,8 +45,10 @@
     reasoning: true,
     fx: true,
     boot: true,
+    push: { answers: true, sanctions: true, faults: true, previews: true },
   };
   let settings = { ...DEFAULT_SETTINGS, ...store.get(LS_SETTINGS, {}) };
+  settings.push = { ...DEFAULT_SETTINGS.push, ...(settings.push || {}) };
   let archives = store.get(LS_ARCHIVES, []);
   let currentId = store.get(LS_CURRENT, null);
   let serverConfig = { authRequired: false, model: 'default' };
@@ -118,6 +120,14 @@
   }
 
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+
+  // A stable id for this device, so the server knows whether you're watching.
+  const LS_CLIENT = 'cogitator.client.v1';
+  let clientId = store.get(LS_CLIENT, null);
+  if (!clientId) {
+    clientId = uid();
+    store.set(LS_CLIENT, clientId);
+  }
   const fmtTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const fmtDate = (ts) => {
     const d = new Date(ts);
@@ -142,6 +152,7 @@
 
   function openSettings(message) {
     $('#build-tag').textContent = BUILD;
+    refreshPushUI();
     $('#set-access').value = settings.accessCode;
     $('#set-name').value = settings.name;
     $('#set-phosphor').value = settings.phosphor;
@@ -174,7 +185,7 @@
     };
     store.set(LS_SETTINGS, settings);
     applySettings();
-    renderConversation();
+    if (!busy) renderConversation(); // re-rendering mid-stream would detach the live reply
     checkLink();
   });
 
@@ -457,6 +468,20 @@
     }
     for (const msg of conv.messages) el.log.append(renderMessage(msg));
     requestAnimationFrame(() => scrollToEnd(true));
+    // A reply that was still being written when this device last looked.
+    if (conv.pendingRun && !busy) resumeRun(conv);
+  }
+
+  /** Switch to a conversation (from a notification tap, for example). */
+  function openConversation(id) {
+    if (!id || !archives.some((c) => c.id === id)) return;
+    if (busy && id !== currentId) return;
+    if (id !== currentId) {
+      currentId = id;
+      persist();
+      closeDrawer();
+      renderConversation();
+    }
   }
 
   // Update a rendered entry in place instead of swapping it out. Swapping the
@@ -685,8 +710,7 @@
   // Talking to the machine spirit
   // -------------------------------------------------------------------------
   let busy = false;
-  let controller = null;
-  let activeRunId = null;
+  let active = null; // { runId, controller, completionId, ceasing, reattach }
 
   function setBusy(on) {
     busy = on;
@@ -746,12 +770,52 @@
       }
       conv.messages.push(userMsg);
     }
+    // The run id lets the server keep the reply going if this device leaves,
+    // and lets any device re-attach to it later.
+    const runId = uid();
+    conv.pendingRun = { id: runId, startedAt: Date.now() };
     conv.updated = Date.now();
     persist();
 
     if (el.log.querySelector('.welcome')) el.log.replaceChildren();
     if (!reuseUser) el.log.append(renderMessage(userMsg));
 
+    const body = JSON.stringify({
+      model: serverConfig.model || 'default',
+      messages: buildMessages(conv, userMsg, images.map((i) => i.full)),
+      stream: true,
+    });
+    await runStream(conv, runId, (signal) => {
+      const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        'X-Cogitator-Run': runId,
+        'X-Cogitator-Conversation': conv.id,
+        'X-Cogitator-Client': clientId,
+        'X-Cogitator-Spirit': encodeURIComponent(spiritLabel()),
+        ...authHeaders(),
+      };
+      if (conv.sessionId) headers['X-Hermes-Session-Id'] = conv.sessionId;
+      return fetch('/api/agent/v1/chat/completions', { method: 'POST', headers, body, signal });
+    });
+  }
+
+  /** Re-attach to a run that was still going when this device last saw it. */
+  function resumeRun(conv) {
+    if (busy || !conv.pendingRun) return;
+    if (el.log.querySelector('.welcome')) el.log.replaceChildren();
+    runStream(conv, conv.pendingRun.id, null);
+  }
+
+  const reattach = (runId, signal) =>
+    fetch(`/api/runs/${encodeURIComponent(runId)}/stream`, { headers: { Accept: 'text/event-stream', ...authHeaders() }, signal, cache: 'no-store' });
+
+  /**
+   * Stream a run into a new spirit entry. `start(signal)` makes the first
+   * request; when it is null (or the connection drops, or the app returns from
+   * the background) the run is re-attached and replayed from the beginning.
+   */
+  async function runStream(conv, runId, start) {
     const spirit = { role: 'spirit', content: '', reasoning: '', rites: [], approvals: [], ts: Date.now(), litany: LITANIES[Math.floor(Math.random() * LITANIES.length)] };
     let node = renderMessage(spirit, { streaming: true });
     el.log.append(node);
@@ -766,65 +830,65 @@
         scrollToEnd();
       });
     };
-
-    let litanyTimer = setInterval(() => {
+    const litanyTimer = setInterval(() => {
       if (spirit.content) return;
       spirit.litany = LITANIES[(LITANIES.indexOf(spirit.litany) + 1) % LITANIES.length];
       redraw();
     }, 2400);
 
     setBusy(true);
-    controller = new AbortController();
-    activeRunId = null;
+    active = { runId, ceasing: false, reattach: false, controller: null, completionId: null };
     let finishReason = null;
     let hermesExtras = null;
     let failure = null;
+    let attempts = 0;
 
-    try {
-      const headers = {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...authHeaders(),
-      };
-      if (conv.sessionId) headers['X-Hermes-Session-Id'] = conv.sessionId;
+    const reset = () => {
+      Object.assign(spirit, { content: '', reasoning: '', rites: [], approvals: [], status: '' });
+      finishReason = null;
+      hermesExtras = null;
+    };
 
-      const res = await fetch('/api/agent/v1/chat/completions', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: serverConfig.model || 'default',
-          messages: buildMessages(conv, userMsg, images.map((i) => i.full)),
-          stream: true,
-        }),
-        signal: controller.signal,
-      });
+    for (;;) {
+      active.controller = new AbortController();
+      active.reattach = false;
+      const signal = active.controller.signal;
+      try {
+        const res = start ? await start(signal) : await reattach(runId, signal);
+        start = null;
 
-      const sid = res.headers.get('X-Hermes-Session-Id');
-      if (sid) conv.sessionId = sid;
+        const sid = res.headers.get('X-Hermes-Session-Id');
+        if (sid) conv.sessionId = sid;
 
-      if (!res.ok) {
-        let detail = '';
-        let code = '';
-        try {
-          const j = await res.json();
-          detail = j?.error?.message || '';
-          code = j?.error?.code || '';
-        } catch {
-          /* not json */
+        if (!res.ok) {
+          let detail = '';
+          let code = '';
+          try {
+            const j = await res.json();
+            detail = j?.error?.message || '';
+            code = j?.error?.code || '';
+          } catch {
+            /* not json */
+          }
+          if (res.status === 401 && code === 'cogitator_auth') {
+            failure = { text: 'The cogitator rejects thy access cipher. Enter it in the Configuration Rites.', auth: true };
+          } else if (res.status === 401) {
+            failure = { text: 'The machine spirit rejected the relay’s credentials. Check AGENT_API_KEY on the server.' };
+          } else if (res.status === 429) {
+            failure = { text: 'The spirit is overburdened with concurrent rites. Wait, then repeat.', retryable: true };
+          } else if (code === 'run_unknown') {
+            failure = { text: 'This rite was lost: the cogitator no longer remembers it (it may have restarted).', retryable: true };
+          } else {
+            failure = { text: `Rite failed (${res.status}). ${detail}`.trim(), retryable: res.status >= 500 };
+          }
+          break;
         }
-        if (res.status === 401 && code === 'cogitator_auth') {
-          failure = { text: 'The cogitator rejects thy access cipher. Enter it in the Configuration Rites.', auth: true };
-        } else if (res.status === 401) {
-          failure = { text: 'The machine spirit rejected the relay’s credentials. Check AGENT_API_KEY on the server.' };
-        } else if (res.status === 429) {
-          failure = { text: 'The spirit is overburdened with concurrent rites. Wait, then repeat.', retryable: true };
-        } else {
-          failure = { text: `Rite failed (${res.status}). ${detail}`.trim(), retryable: res.status >= 500 };
-        }
-      } else {
+
+        reset();
         await readStream(res.body, {
           onChunk(chunk) {
-            if (chunk.id && !activeRunId) activeRunId = chunk.id;
+            attempts = 0;
+            if (chunk.id && !active.completionId) active.completionId = chunk.id;
             if (chunk.hermes) hermesExtras = chunk.hermes;
             const choice = chunk.choices && chunk.choices[0];
             if (!choice) return;
@@ -845,32 +909,49 @@
             } else if (name === 'hermes.status') {
               spirit.status = data.text || '';
             } else if (name === 'approval.request') {
-              if (data.run_id) activeRunId = data.run_id;
+              if (data.run_id) active.completionId = data.run_id;
               spirit.approvals.push({ ...data, verdict: null });
               requestAnimationFrame(() => requestAnimationFrame(() => scrollToEnd(true)));
-              notify('Sanction required', data.description || data.command || 'The machine spirit awaits thy verdict.');
             }
             redraw();
           },
         });
+        break; // the stream ended: the run is over
+      } catch (err) {
+        if (active.ceasing && err.name === 'AbortError') {
+          finishReason = 'cancelled';
+          break;
+        }
+        if (err.name === 'AbortError' && !active.reattach) {
+          finishReason = 'cancelled';
+          break;
+        }
+        // Connection dropped (backgrounded, network blip) or a deliberate
+        // re-attach: pick the run back up from the server.
+        if (!active.reattach) {
+          attempts += 1;
+          if (attempts > 6) {
+            failure = { text: `The noospheric link faltered: ${err.message}`, retryable: true };
+            break;
+          }
+          spirit.status = 'Link interrupted; re-establishing…';
+          redraw();
+          await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** (attempts - 1), 15000)));
+        }
       }
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        finishReason = 'cancelled';
-      } else {
-        failure = { text: `The noospheric link faltered: ${err.message}`, retryable: true };
-      }
-    } finally {
-      clearInterval(litanyTimer);
-      if (frame) cancelAnimationFrame(frame);
-      controller = null;
-      setBusy(false);
     }
+
+    clearInterval(litanyTimer);
+    if (frame) cancelAnimationFrame(frame);
+    const ceased = active.ceasing;
+    active = null;
+    setBusy(false);
+    delete conv.pendingRun;
 
     // Finalise
     for (const r of spirit.rites) if (r.status === 'running') r.status = 'completed';
     for (const a of spirit.approvals) if (!a.verdict) a.verdict = 'expired';
-    if (finishReason === 'cancelled') spirit.note = 'Rite ceased by the supplicant';
+    if (ceased || finishReason === 'cancelled') spirit.note = 'Rite ceased by the supplicant';
     else if (finishReason === 'length') spirit.note = 'The spirit’s labours were cut short';
     else if (finishReason === 'error') spirit.note = 'The rite ended in fault';
     if (hermesExtras && hermesExtras.error_code && !spirit.note) spirit.note = String(hermesExtras.error_code).replace(/_/g, ' ');
@@ -889,7 +970,7 @@
       conv.messages.push(errMsg);
       el.log.append(renderMessage(errMsg));
       if (failure.auth) openSettings('Access cipher required.');
-    } else if (!keepSpirit && finishReason === 'cancelled') {
+    } else if (!keepSpirit && (ceased || finishReason === 'cancelled')) {
       const sysMsg = { role: 'system', content: 'The rite was ceased before the spirit spoke.', ts: Date.now() };
       conv.messages.push(sysMsg);
       el.log.append(renderMessage(sysMsg));
@@ -897,10 +978,6 @@
     conv.updated = Date.now();
     persist();
     scrollToEnd();
-
-    if (document.visibilityState === 'hidden' && spirit.content) {
-      notify(`${spiritLabel()} has answered`, spirit.content.slice(0, 140));
-    }
   }
 
   async function readStream(stream, { onChunk, onEvent }) {
@@ -950,7 +1027,7 @@
   }
 
   async function respondApproval(msg, approval, choice, container) {
-    const runId = approval.run_id || activeRunId;
+    const runId = approval.run_id || active?.completionId;
     if (!runId) return;
     container.querySelectorAll('button').forEach((b) => (b.disabled = true));
     const body = { choice };
@@ -976,15 +1053,14 @@
   }
 
   function cease() {
-    if (activeRunId) {
-      fetch(`/api/agent/v1/runs/${encodeURIComponent(activeRunId)}/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: '{}',
-      }).catch(() => {});
-    }
-    // Closing the stream also makes Hermes interrupt the agent.
-    setTimeout(() => controller && controller.abort(), 150);
+    if (!active) return;
+    active.ceasing = true;
+    const run = active;
+    // The server stops the harness and ends the stream; abort locally as a fallback.
+    fetch(`/api/runs/${encodeURIComponent(run.runId)}/cancel`, { method: 'POST', headers: authHeaders() }).catch(() => {});
+    setTimeout(() => {
+      if (active === run) run.controller?.abort();
+    }, 4000);
   }
 
   function retryLast() {
@@ -1000,23 +1076,204 @@
   }
 
   // -------------------------------------------------------------------------
-  // Notifications (only when the app is backgrounded and permission granted)
+  // Presence: tell the server whether this device is looking at the app, so
+  // it only sends notifications when you're away.
   // -------------------------------------------------------------------------
-  function notify(title, body) {
-    if (document.visibilityState === 'visible') return;
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
-    navigator.serviceWorker?.ready
-      .then((reg) => reg.showNotification(title, { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'cogitator' }))
-      .catch(() => {});
+  let hiddenAt = 0;
+  function reportPresence() {
+    const visible = document.visibilityState === 'visible';
+    fetch('/api/presence', {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ clientId, visible }),
+    }).catch(() => {});
   }
-  // Ask once, on the first transmission, so the prompt follows a user gesture.
-  el.composer.addEventListener(
-    'submit',
-    () => {
-      if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
-    },
-    { once: true },
-  );
+  document.addEventListener('visibilitychange', () => {
+    reportPresence();
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    navigator.clearAppBadge?.().catch(() => {});
+    // Back from the background: the phone probably dropped the stream while
+    // suspended, so re-attach to the run (the server kept it going).
+    const away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (active && !active.ceasing && away > 3000) {
+      active.reattach = true;
+      active.controller?.abort();
+    } else if (!busy) {
+      const conv = current();
+      if (conv?.pendingRun) resumeRun(conv);
+    }
+  });
+  setInterval(() => {
+    if (document.visibilityState === 'visible') reportPresence();
+  }, 60000);
+
+  // -------------------------------------------------------------------------
+  // Summonings: Web Push notifications
+  // -------------------------------------------------------------------------
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isStandalone = () => window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const pushCapable = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  function b64uToBytes(str) {
+    const pad = '='.repeat((4 - (str.length % 4)) % 4);
+    const raw = atob((str + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  }
+
+  async function swRegistration() {
+    if (!('serviceWorker' in navigator)) return null;
+    return Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 4000))]);
+  }
+
+  async function currentSubscription() {
+    const reg = await swRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+
+  async function serverKey() {
+    const res = await fetch('/api/push/config', { headers: authHeaders(), cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status === 401 ? 'access cipher required' : `server said ${res.status}`);
+    return (await res.json()).publicKey;
+  }
+
+  async function sendSubscription(sub) {
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ subscription: sub.toJSON(), clientId, prefs: settings.push }),
+    });
+    if (!res.ok) throw new Error(`server said ${res.status}`);
+  }
+
+  /** Subscribe this device (must run from a tap: iOS requires a user gesture). */
+  async function enablePush() {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error(perm === 'denied' ? 'permission denied' : 'permission not granted');
+    const reg = await swRegistration();
+    if (!reg) throw new Error('service worker not ready');
+    const key = await serverKey();
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub, key)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(key) });
+    await sendSubscription(sub);
+  }
+
+  function sameKey(sub, key) {
+    const have = sub.options && sub.options.applicationServerKey;
+    if (!have) return true;
+    const a = new Uint8Array(have);
+    const b = b64uToBytes(key);
+    return a.length === b.length && a.every((v, i) => v === b[i]);
+  }
+
+  async function disablePush() {
+    const sub = await currentSubscription();
+    if (!sub) return;
+    await fetch('/api/push/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+    }).catch(() => {});
+    await sub.unsubscribe().catch(() => {});
+  }
+
+  /** Keep the server's copy of this device's subscription current (silently). */
+  async function syncPush() {
+    if (!pushCapable() || Notification.permission !== 'granted') return;
+    try {
+      const sub = await currentSubscription();
+      if (!sub) return;
+      const key = await serverKey();
+      if (!sameKey(sub, key)) return enablePush(); // the server's keys changed
+      await sendSubscription(sub);
+    } catch {
+      /* offline or locked; try again next launch */
+    }
+  }
+
+  function pushMessage(text, warn) {
+    const p = $('#push-status');
+    p.textContent = text;
+    p.classList.toggle('warn', !!warn);
+  }
+
+  async function refreshPushUI(note) {
+    const toggle = $('#btn-push-toggle');
+    const test = $('#btn-push-test');
+    for (const k of Object.keys(settings.push)) $(`#push-${k}`).checked = settings.push[k];
+    toggle.hidden = test.hidden = true;
+    if (!window.isSecureContext) return pushMessage('Unavailable: notifications need the cogitator to be served over HTTPS. See Troubleshooting → No notifications.', true);
+    if (isIOS && !isStandalone()) return pushMessage('On iPhone, add the cogitator to the Home Screen and open it from there to enable summonings.', true);
+    if (!pushCapable()) return pushMessage('This browser cannot receive push notifications.', true);
+    if (Notification.permission === 'denied') return pushMessage('Blocked: allow notifications for this app in your device settings.', true);
+    const sub = await currentSubscription().catch(() => null);
+    toggle.hidden = false;
+    toggle.textContent = sub ? 'Disable summonings' : 'Enable summonings';
+    test.hidden = !sub;
+    pushMessage(note || (sub ? 'Active on this device. Thou shalt be summoned when away.' : 'Not enabled on this device.'));
+  }
+
+  $('#btn-push-toggle').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const sub = await currentSubscription();
+      if (sub) {
+        await disablePush();
+        await refreshPushUI('Summonings disabled on this device.');
+      } else {
+        await enablePush();
+        await refreshPushUI('Summonings enabled. Send a test to be sure.');
+      }
+    } catch (err) {
+      await refreshPushUI();
+      pushMessage(`Could not change summonings: ${err.message}.`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#btn-push-test').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const sub = await currentSubscription();
+      if (!sub) throw new Error('not subscribed');
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `push service said ${j.status || res.status}`);
+      pushMessage('Test sent. It may take a few seconds to arrive.');
+    } catch (err) {
+      pushMessage(`Test failed: ${err.message}.`, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  for (const k of Object.keys(DEFAULT_SETTINGS.push)) {
+    $(`#push-${k}`).addEventListener('change', (e) => {
+      settings.push = { ...settings.push, [k]: e.currentTarget.checked };
+      store.set(LS_SETTINGS, settings);
+      syncPush();
+    });
+  }
+
+  // A tapped notification asks the open app to show its conversation.
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'open-conversation') openConversation(e.data.convId);
+  });
 
   // -------------------------------------------------------------------------
   // Start-up
@@ -1042,8 +1299,19 @@
     }
     if (settings.boot && firstThisSession) await bootSequence();
 
+    // Opened from a notification: ?c=<conversation id>
+    const wanted = new URLSearchParams(location.search).get('c');
+    if (wanted && archives.some((c) => c.id === wanted)) {
+      currentId = wanted;
+      persist();
+    }
+    if (location.search) history.replaceState(null, '', location.pathname);
+
     renderConversation();
     checkLink();
+    reportPresence();
+    navigator.clearAppBadge?.().catch(() => {});
+    syncPush();
 
     if (serverConfig.authRequired) {
       let ok = false;

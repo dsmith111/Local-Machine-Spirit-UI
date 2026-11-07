@@ -18,6 +18,8 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { RunStore } = require('./lib/runs');
+const { Notifier } = require('./lib/notify');
 
 // ---------------------------------------------------------------------------
 // Configuration (.env file next to this script, overridden by real env vars)
@@ -52,6 +54,10 @@ const config = {
   agentKey: process.env.AGENT_API_KEY || process.env.HERMES_API_KEY || '',
   model: process.env.AGENT_MODEL || process.env.HERMES_MODEL || '',
   accessCode: process.env.COGITATOR_ACCESS_CODE || '',
+  // Where push keys and device subscriptions are kept.
+  dataDir: path.resolve(__dirname, process.env.DATA_DIR || 'data'),
+  // Contact for push services (VAPID "sub"): a mailto: or https: URL.
+  vapidSubject: process.env.VAPID_SUBJECT || 'https://github.com/dsmith111/Local-Machine-Spirit-UI',
 };
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -66,6 +72,7 @@ const ALLOWED_UPSTREAM = [
 
 // Request headers forwarded to the harness (x-hermes-* enable Hermes Agent sessions).
 const FORWARD_REQ_HEADERS = ['content-type', 'accept', 'x-hermes-session-id', 'x-hermes-session-key', 'idempotency-key'];
+// x-cogitator-* request headers (run id, conversation, client, spirit name) stay here; they are not forwarded.
 // Response headers passed back to the browser.
 const FORWARD_RES_HEADERS = ['content-type', 'x-hermes-session-id', 'x-hermes-session-key', 'retry-after'];
 
@@ -146,6 +153,45 @@ function serveStatic(req, res, urlPath) {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications and detached runs
+// ---------------------------------------------------------------------------
+let notifier = null;
+try {
+  notifier = new Notifier({ dataDir: config.dataDir, subject: config.vapidSubject });
+} catch (err) {
+  console.warn(`    WARNING: notifications disabled; cannot use data directory ${config.dataDir} (${err.message})`);
+}
+const runs = new RunStore({
+  agentUrl: config.agentUrl,
+  agentKey: config.agentKey,
+  hooks: notifier ? { onApproval: (r, d) => notifier.onApproval(r, d), onFinish: (r) => notifier.onFinish(r) } : {},
+});
+
+function readJson(req, limit = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const parts = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error('body too large'));
+        req.destroy();
+      } else parts.push(c);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(parts).toString('utf8') || '{}'));
+      } catch {
+        reject(new Error('invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+const header = (req, name, max = 64) => String(req.headers[name] || '').slice(0, max);
+
+// ---------------------------------------------------------------------------
 // Relay to the agentic harness
 // ---------------------------------------------------------------------------
 function relay(req, res, upstreamPath, search) {
@@ -159,6 +205,24 @@ function relay(req, res, upstreamPath, search) {
   const headers = {};
   for (const h of FORWARD_REQ_HEADERS) if (req.headers[h]) headers[h] = req.headers[h];
   if (config.agentKey) headers.authorization = `Bearer ${config.agentKey}`;
+
+  // A chat request tagged with a run id becomes a detached run: it keeps going
+  // if the device disconnects, and can be re-attached and replayed.
+  const runId = header(req, 'x-cogitator-run');
+  if (upstreamPath === '/v1/chat/completions' && RunStore.validId(runId)) {
+    return runs.start(req, res, {
+      id: runId,
+      upstreamPath: upstreamPath + (search || ''),
+      headers,
+      securityHeaders,
+      forwardResHeaders: FORWARD_RES_HEADERS,
+      meta: {
+        convId: header(req, 'x-cogitator-conversation'),
+        clientId: header(req, 'x-cogitator-client'),
+        spiritName: decodeURIComponent(header(req, 'x-cogitator-spirit', 120)).slice(0, 32) || 'The machine spirit',
+      },
+    });
+  }
 
   const lib = target.protocol === 'https:' ? https : http;
   const upstream = lib.request(
@@ -228,6 +292,52 @@ function resolveModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Runs, push and presence API
+// ---------------------------------------------------------------------------
+async function handleApi(req, res, p) {
+  let m;
+  if ((m = p.match(/^\/api\/runs\/([^/]+)\/stream$/)) && req.method === 'GET') {
+    const run = runs.get(m[1]);
+    if (!run) return sendJson(res, 404, { error: { message: 'That rite is no longer remembered.', code: 'run_unknown' } });
+    if (!runs.attach(m[1], res)) return sendJson(res, 409, { error: { message: 'Rite cannot be replayed.' }, run: runs.summary(run) });
+    return;
+  }
+  if ((m = p.match(/^\/api\/runs\/([^/]+)$/)) && req.method === 'GET') {
+    const run = runs.get(m[1]);
+    return run ? sendJson(res, 200, runs.summary(run)) : sendJson(res, 404, { error: { message: 'Unknown run.' } });
+  }
+  if ((m = p.match(/^\/api\/runs\/([^/]+)\/cancel$/)) && req.method === 'POST') {
+    return runs.cancel(m[1]) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: { message: 'Unknown run.' } });
+  }
+  if (p === '/api/presence' && req.method === 'POST') {
+    const body = await readJson(req, 4096);
+    notifier?.setPresence(body.clientId, body.visible);
+    return sendJson(res, 200, { ok: true });
+  }
+  if (!notifier) return sendJson(res, 503, { error: { message: 'Notifications are disabled on this server.' } });
+  if (p === '/api/push/config' && req.method === 'GET') {
+    return sendJson(res, 200, { publicKey: notifier.publicKey });
+  }
+  if (p === '/api/push/subscribe' && req.method === 'POST') {
+    const body = await readJson(req);
+    const entry = notifier.subscribe(body.subscription, body.clientId, body.prefs);
+    return sendJson(res, 200, { ok: true, prefs: entry.prefs });
+  }
+  if (p === '/api/push/unsubscribe' && req.method === 'POST') {
+    const body = await readJson(req);
+    notifier.unsubscribe(String(body.endpoint || ''));
+    return sendJson(res, 200, { ok: true });
+  }
+  if (p === '/api/push/test' && req.method === 'POST') {
+    const body = await readJson(req);
+    const result = await notifier.test(String(body.endpoint || ''));
+    const ok = result.status >= 200 && result.status < 300;
+    return sendJson(res, ok ? 200 : 502, { ok, status: result.status, error: result.error || result.body || undefined });
+  }
+  return sendJson(res, 404, { error: { message: 'Not found' } });
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
@@ -249,6 +359,12 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/api/agent/')) {
     return relay(req, res, p.slice('/api/agent'.length), url.search);
   }
+  if (p.startsWith('/api/runs/') || p.startsWith('/api/push/') || p === '/api/presence') {
+    if (!isAuthorized(req)) return sendJson(res, 401, { error: { message: 'Access code required.', code: 'cogitator_auth' } });
+    return handleApi(req, res, p).catch((err) => {
+      if (!res.headersSent) sendJson(res, 400, { error: { message: err.message } });
+    });
+  }
   if (p.startsWith('/api/')) return sendJson(res, 404, { error: { message: 'Not found' } });
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -261,10 +377,21 @@ const server = http.createServer((req, res) => {
 server.requestTimeout = 0; // agent turns can run for a long time
 server.headersTimeout = 60_000;
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`!!! Port ${config.port} on ${config.host} is already in use. Is another copy running (a forgotten \`npm start\`, or the service)?`);
+    console.error('    Stop it, or set a different PORT in .env.');
+  } else {
+    console.error(`!!! Cannot listen on ${config.host}:${config.port}: ${err.message}`);
+  }
+  process.exit(1);
+});
+
 server.listen(config.port, config.host, () => {
   console.log(`+++ Cogitator online at http://${config.host}:${config.port} +++`);
   console.log(`    Relaying to machine spirit at ${config.agentUrl}`);
   console.log(`    Model: ${config.model || '(auto: first entry of /v1/models)'}`);
   if (!config.agentKey) console.log('    NOTE: AGENT_API_KEY is not set; requests are sent without a bearer token.');
   if (!config.accessCode) console.warn('    NOTE: COGITATOR_ACCESS_CODE is not set; anyone who can reach this port can command the agent.');
+  if (notifier) console.log(`    Push notifications ready (${notifier.subs.length} device${notifier.subs.length === 1 ? '' : 's'} subscribed; keys in ${config.dataDir})`);
 });

@@ -1,6 +1,6 @@
 /* Cogitator service worker: caches the app shell so the PWA opens instantly
  * and offline. API traffic (/api/*) is never cached. */
-const VERSION = 'cogitator-v3';
+const VERSION = 'cogitator-v4';
 const SHELL = [
   './',
   'index.html',
@@ -66,12 +66,48 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// ---------------------------------------------------------------------------
+// Summonings: push notifications from the cogitator server
+// ---------------------------------------------------------------------------
+self.addEventListener('push', (event) => {
+  let msg = {};
+  try {
+    msg = event.data ? event.data.json() : {};
+  } catch {
+    msg = { title: 'Cogitator', body: event.data ? event.data.text() : '' };
+  }
+  const title = msg.title || 'Cogitator';
+  const options = {
+    body: msg.body || '',
+    tag: msg.tag || 'cogitator',
+    renotify: true,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    requireInteraction: msg.kind === 'sanction',
+    data: { convId: msg.convId || null, kind: msg.kind || null },
+  };
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      // A dot on the app icon until the app is opened again.
+      self.navigator && self.navigator.setAppBadge ? self.navigator.setAppBadge().catch(() => {}) : null,
+    ]),
+  );
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const convId = event.notification.data && event.notification.data.convId;
+  const target = new URL(convId ? `./?c=${encodeURIComponent(convId)}` : './', self.registration.scope).href;
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (wins) => {
       const win = wins.find((w) => 'focus' in w);
-      return win ? win.focus() : self.clients.openWindow('./');
+      if (win) {
+        await win.focus();
+        if (convId) win.postMessage({ type: 'open-conversation', convId });
+        return;
+      }
+      return self.clients.openWindow(target);
     }),
   );
 });

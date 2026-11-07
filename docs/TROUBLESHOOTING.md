@@ -24,7 +24,8 @@ Each entry gives the **symptom**, its **cause**, and the **rite of repair** (the
 4. [Hermes Agent specifics](#iv-hermes-agent-specifics)
 5. [Chatting](#v-chatting)
 6. [The installed app (PWA)](#vi-the-installed-app-pwa)
-7. [Starting over](#vii-starting-over)
+7. [Summonings (notifications)](#vii-summonings-notifications)
+8. [Starting over](#viii-starting-over)
 
 ---
 
@@ -47,7 +48,8 @@ Read the logs first: `journalctl -u local-cogitator-interface -n 50`.
 | `status=217/USER` | The unit names a user that doesn't exist. Usually `deploy/local-cogitator-interface.service` was copied with its `<user>` placeholder | Re-run `./scripts/install-service.sh`. It writes the real values |
 | `status=200/CHDIR` | The unit's folder doesn't exist (placeholder path, or you moved the project) | Re-run `./scripts/install-service.sh` from the project's current location |
 | `status=203/EXEC` or `node: No such file or directory` | systemd can't find Node. It doesn't load your shell profile, so nvm, fnm and asdf installs are invisible to it | Re-run the installer, or point it at Node explicitly: `NODE_BIN=$(which node) ./scripts/install-service.sh` |
-| `EADDRINUSE` | Something already uses the port, often a forgotten `npm start` | Stop it (`sudo lsof -i :8080` shows what holds the port), or change `PORT` in `.env` |
+| `Port 8080 … is already in use` (`EADDRINUSE`) | Something already uses the port, often a forgotten `npm start` | Stop it (`sudo lsof -i :8080` shows what holds the port), or change `PORT` in `.env` |
+| `notifications disabled; cannot use data directory` | The service can't write `DATA_DIR` (default `data/` in the project) | Make the folder writable by the service user, or point `DATA_DIR` somewhere it can write. Chat still works without it |
 | `Node … is too old` | The installer found Node older than 18 | Upgrade Node, then re-run the installer |
 
 Re-run the installer whenever you move the folder or upgrade Node.
@@ -166,6 +168,9 @@ Hermes needs at least a **64k context window**. Ollama defaults to much less on 
 
 **Rite of repair:** turn buffering off. In nginx, set `proxy_buffering off;` and `proxy_read_timeout 1h;`. Caddy and Tailscale serve stream without extra settings.
 
+### A reply stopped when I locked my phone or switched apps
+It shouldn't: the server keeps every run going and the app reconnects when you come back, replaying the reply from the start. If you see **"This rite was lost"**, the cogitator restarted (or more than an hour passed) before you returned, so the run's output is gone. Tap **Repeat the rite** to ask again. With Hermes, the agent's session still remembers anything it finished.
+
 ### Long tasks get cut off
 **Cause:** a proxy timeout. Agent runs that use tools can take minutes.
 
@@ -201,26 +206,51 @@ This was fixed in build `2026.11.07-r4`. If you still see it, first check the bu
 
 **Rite of repair:** if a visibly different strip remains, remove the app from the home screen and add it again. iOS fixes some of an app's screen-size behaviour at install time. Removing the app may delete its saved conversations, so treat this as a last resort.
 
-### No notifications
-Notifications need **all** of the following:
-- the site served over **HTTPS**,
-- on iPhone, the app **added to the Home Screen** (iOS 16.4 or newer) and opened from there,
-- permission granted when the app asks (it asks on your first message),
-- the app in the background when the reply or approval request arrives.
-
-If you declined once, re-enable notifications in the phone's settings for the app or site.
-
 ### I can't find the Install option
 - **iOS:** only Safari's **Share → Add to Home Screen** installs it. Other iOS browsers vary.
 - **Android:** Chrome offers **Install app** only over HTTPS. See [installing over plain HTTP](#it-loads-over-http-but-i-cant-install-it-properly).
 
 ---
 
-## VII. Starting over
+## VII. Summonings (notifications)
+
+Start with the message in **Configuration Rites → Summonings**. It says what's missing:
+
+| Message | Cause | Fix |
+|---|---|---|
+| *Unavailable: notifications need … HTTPS* | You opened the app over plain `http://` on a network address. Browsers only allow push on HTTPS | Serve it over HTTPS (Tailscale, Caddy, nginx; see [Rite the Third](../README.md#rite-the-third-open-the-noospheric-conduit)), then open the HTTPS address. On iPhone, re-add it to the Home Screen from that address |
+| *On iPhone, add the cogitator to the Home Screen…* | iOS only allows push for installed web apps | Safari → Share → **Add to Home Screen**, then open it from the icon |
+| *Blocked: allow notifications…* | Permission was denied once, so the browser won't ask again | iOS: Settings → Notifications → the cogitator app → **Allow Notifications**. Android: long-press the app icon → App info → Notifications |
+| *This browser cannot receive push notifications* | The browser has no Web Push support | Use Safari (iOS 16.4+), Chrome, Edge or Firefox |
+| *Could not change summonings: access cipher required* | The access cipher isn't set on this device | Enter it in Configuration Rites first |
+| *Could not change summonings: server said 503* | The server couldn't create its `data/` folder | See the `data directory` row in [the service won't start](#the-service-wont-start) |
+
+### "Send test" fails, or the test never arrives
+- **Test failed (push service said 403 / 400):** the push service rejected the server's signature. Check that `VAPID_SUBJECT` is an `https:` URL or a `mailto:` address, and that the host's clock is correct (`timedatectl`).
+- **Test failed (push service said 404 / 410):** the subscription expired, which can happen after reinstalling the app or restoring the phone. Tap **Disable summonings**, then **Enable summonings** again.
+- **Test failed (0 / timeout):** the host can't reach the push service. Push needs outbound internet: `curl -I https://web.push.apple.com` (iPhone) or `curl -I https://fcm.googleapis.com` (Android/Chrome) should connect.
+- **"Test sent" but nothing appears:** check the phone's Focus or Do Not Disturb mode and the app's notification settings. On iPhone, notifications for a web app can be silenced separately from Safari.
+
+### I get notified while I'm using the app
+The app reports when it's visible, and the server stays quiet for the device you're watching from. If you use the app on two devices, the other one is still notified; turn summonings off on it, or untick the events you don't want there.
+
+### I'm not notified when I expected to be
+- You're only notified when you're **away** from the device that started the run, and never for runs you stopped with **Cease**.
+- Check which events are ticked under **Summonings** on that device.
+- The server keeps subscriptions in `data/subscriptions.json`. If you deleted `data/` (or `DATA_DIR` changed), every device must enable summonings again. The server also regenerates its keys, and devices re-subscribe on their next launch.
+- Look for `push:` lines in the cogitator log (`journalctl -u local-cogitator-interface -n 100`); delivery failures are logged there.
+
+### Notifications show no message text
+**Include message previews** is off on that device. Turn it on under **Summonings** if you're comfortable with reply text appearing on the lock screen.
+
+---
+
+## VIII. Starting over
 
 - **Clear conversations on one device:** Configuration Rites → **Purge Archives**.
 - **Reset all settings on one device:** clear the site's data in the browser (iOS: Settings → Apps → Safari → Advanced → Website Data), or remove and re-add the installed app.
 - **Remove the service:** `./scripts/install-service.sh --uninstall`.
+- **Reset notifications for all devices:** stop the service, delete the `data/` folder, start it again, and re-enable summonings on each device.
 - **Reset the cogitator config:** `cp .env.example .env`, fill it in again, then restart.
 
 ---

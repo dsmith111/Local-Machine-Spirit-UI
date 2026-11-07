@@ -18,6 +18,8 @@ RestartSec=3
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
+# Push keys and device subscriptions are written here (DATA_DIR).
+ReadWritePaths=/opt/local-cogitator-interface/data
 PrivateTmp=true
 
 [Install]

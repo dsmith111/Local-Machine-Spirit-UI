@@ -652,3 +652,25 @@ dialog::backdrop { background: rgba(0,0,0,0.7); }
   /* no trim or shadow: fades up into the casing above */
 }
 .bezel { position: relative; z-index: 1; }
+
+/* Summonings (notifications) in the Configuration Rites */
+fieldset.summon {
+  margin: 4px 0 0;
+  padding: 10px 12px 12px;
+  border: 1px solid #3a3022;
+  border-radius: 4px;
+  display: grid;
+  gap: 8px;
+}
+fieldset.summon legend {
+  padding: 0 6px;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+.push-status { margin: 0; font-size: 0.88rem; color: #d9c7a0; }
+.push-status.warn { color: #ff9f8f; }
+.push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.push-actions:not(:has(button:not([hidden]))) { display: none; }
+.push-hint { margin: 2px 0 0; font-size: 0.75rem; letter-spacing: 0.06em; color: #8a7655; }
