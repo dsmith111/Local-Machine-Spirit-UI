@@ -159,6 +159,27 @@ hermes gateway restart
 
 ---
 
+## IV½. Keep the spirit's working private
+
+By default Hermes narrates its work on Discord: tool calls with their code and file paths, in-between "let me…" messages, and "⏳ Working…" status lines. In a shared server that reveals details of your machine. Turn it off for Discord only (the cogitator still shows everything to you). Set it for both profiles, since each serves its own conversations:
+
+```bash
+for p in default guest; do
+  hermes -p $p config set display.platforms.discord.tool_progress "'off'"
+  hermes -p $p config set display.platforms.discord.interim_assistant_messages false
+  hermes -p $p config set display.platforms.discord.long_running_notifications false
+  hermes -p $p config set display.platforms.discord.show_reasoning false
+  hermes -p $p config set display.platforms.discord.live_status "'off'"
+  hermes -p $p config set display.platforms.discord.busy_ack_detail false
+  hermes -p $p config set display.platforms.discord.tool_preview_length 0
+done
+hermes gateway restart
+```
+
+Only the final answer is posted. For work on your own machine, prefer **DMs with the bot** or the cogitator: a final answer can still quote paths or output, and channel replies are visible to everyone there (including server admins).
+
+---
+
 ## V. Messages for you, on your phone (optional)
 
 When the guest spirit writes a `TO THE ADEPT:` line, Hermes can forward that turn to the cogitator, which turns it into a **Proclamation** and a push notification. This uses Hermes' signed **outbound webhook**.
