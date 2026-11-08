@@ -181,6 +181,22 @@ It shouldn't: the server keeps every run going and the app reconnects when you c
 
 **Rite of repair:** wait for other runs to finish, or raise the limit (Hermes: `gateway.api_server.max_concurrent_runs`).
 
+### An image shows "Pict-capture unreachable"
+The agent replied with a file path (Hermes writes `MEDIA:/path/to/file.png`), and the cogitator reads that file from its own disk. The message after "unreachable" says why it couldn't:
+
+| Message | Cause | Fix |
+|---|---|---|
+| *not on this machine (moved, deleted, or on another host)* | The file is gone (agents clean their caches), or the harness runs on a **different machine** from the cogitator | Ask the agent to make it again. Showing files from another machine isn't supported. Run the cogitator on the harness's host, or have the agent reply with a Markdown image (`![…](https://…)`) instead |
+| *That folder is not in MEDIA_DIRS* | The agent saved the image outside the allowed folders (default `~/.hermes` and `/tmp`) | Add the folder to `MEDIA_DIRS` in `.env` (colon-separated) and restart. If Hermes uses a custom `HERMES_HOME`, add that |
+| *Only image files can be shown* | The path isn't a PNG, JPEG, GIF, WebP, BMP or SVG file | Ask for one of those formats |
+| *too large to show (over 25 MB)* | Very large file | Ask the agent for a smaller version |
+| *Access code required* | This device has no access cipher | Enter it in Configuration Rites |
+
+If the service runs as a different user from the harness, that user also needs permission to read the files.
+
+### A reply shows "MEDIA:/…" as text instead of an image
+The path isn't a recognised image tag: it must be an absolute path (or start with `~/`) ending in an image extension. Other file types, such as `MEDIA:/tmp/report.pdf`, stay as text.
+
 ### Tool lines, approvals or reasoning never appear
 **Cause:** these need the [extended protocol](../README.md#-vii-the-extended-litanies). Plain model servers (Ollama, LM Studio, vLLM) don't send them, and reasoning only appears for models that produce it.
 

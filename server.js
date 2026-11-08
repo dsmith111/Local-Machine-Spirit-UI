@@ -18,6 +18,7 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { RunStore } = require('./lib/runs');
 const { Notifier } = require('./lib/notify');
 
@@ -58,7 +59,24 @@ const config = {
   dataDir: path.resolve(__dirname, process.env.DATA_DIR || 'data'),
   // Contact for push services (VAPID "sub"): a mailto: or https: URL.
   vapidSubject: process.env.VAPID_SUBJECT || 'https://github.com/dsmith111/Local-Machine-Spirit-UI',
+  // Folders the agent's images (MEDIA:/path tags) may be served from, colon-separated.
+  mediaDirs: (process.env.MEDIA_DIRS || '~/.hermes:/tmp')
+    .split(':')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => path.resolve(d.replace(/^~(?=$|\/)/, os.homedir()))),
 };
+
+const MEDIA_TYPES = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+};
+const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -292,10 +310,54 @@ function resolveModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Agent images: harnesses such as Hermes reply with "MEDIA:/path/to/file.png".
+// Only image files inside MEDIA_DIRS are served, to authorised devices only.
+// ---------------------------------------------------------------------------
+async function serveMedia(res, requested) {
+  const fail = (status, code, message) => sendJson(res, status, { error: { message, code } });
+  if (!requested) return fail(400, 'media_path', 'No path given.');
+  const expanded = requested.replace(/^~(?=$|\/)/, os.homedir());
+  if (!path.isAbsolute(expanded)) return fail(400, 'media_path', 'Path must be absolute.');
+  const type = MEDIA_TYPES[path.extname(expanded).toLowerCase()];
+  if (!type) return fail(415, 'media_type', 'Only image files can be shown.');
+
+  let real;
+  try {
+    real = await fs.promises.realpath(expanded);
+  } catch {
+    return fail(404, 'media_missing', 'The pict-capture is not on this machine (moved, deleted, or on another host).');
+  }
+  // Re-check the extension after following symlinks.
+  if (MEDIA_TYPES[path.extname(real).toLowerCase()] !== type) return fail(415, 'media_type', 'Only image files can be shown.');
+  const roots = await Promise.all(config.mediaDirs.map((d) => fs.promises.realpath(d).catch(() => null)));
+  if (!roots.some((r) => r && (real === r || real.startsWith(r + path.sep)))) {
+    return fail(403, 'media_forbidden', 'That folder is not in MEDIA_DIRS on the cogitator.');
+  }
+  let stat;
+  try {
+    stat = await fs.promises.stat(real);
+  } catch {
+    return fail(404, 'media_missing', 'The pict-capture is not on this machine.');
+  }
+  if (!stat.isFile()) return fail(404, 'media_missing', 'Not a file.');
+  if (stat.size > MEDIA_MAX_BYTES) return fail(413, 'media_large', 'The pict-capture is too large to show (over 25 MB).');
+  res.writeHead(200, {
+    ...securityHeaders,
+    'Content-Type': type,
+    'Content-Length': stat.size,
+    'Cache-Control': 'private, max-age=86400',
+    // Served only for <img>; if opened directly, nothing in it (e.g. SVG script) may run.
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  });
+  fs.createReadStream(real).pipe(res);
+}
+
+// ---------------------------------------------------------------------------
 // Runs, push and presence API
 // ---------------------------------------------------------------------------
-async function handleApi(req, res, p) {
+async function handleApi(req, res, p, url) {
   let m;
+  if (p === '/api/media' && req.method === 'GET') return serveMedia(res, url.searchParams.get('path') || '');
   if ((m = p.match(/^\/api\/runs\/([^/]+)\/stream$/)) && req.method === 'GET') {
     const run = runs.get(m[1]);
     if (!run) return sendJson(res, 404, { error: { message: 'That rite is no longer remembered.', code: 'run_unknown' } });
@@ -359,9 +421,9 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/api/agent/')) {
     return relay(req, res, p.slice('/api/agent'.length), url.search);
   }
-  if (p.startsWith('/api/runs/') || p.startsWith('/api/push/') || p === '/api/presence') {
+  if (p.startsWith('/api/runs/') || p.startsWith('/api/push/') || p === '/api/presence' || p === '/api/media') {
     if (!isAuthorized(req)) return sendJson(res, 401, { error: { message: 'Access code required.', code: 'cogitator_auth' } });
-    return handleApi(req, res, p).catch((err) => {
+    return handleApi(req, res, p, url).catch((err) => {
       if (!res.headersSent) sendJson(res, 400, { error: { message: err.message } });
     });
   }

@@ -674,3 +674,87 @@ fieldset.summon legend {
 .push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .push-actions:not(:has(button:not([hidden]))) { display: none; }
 .push-hint { margin: 2px 0 0; font-size: 0.75rem; letter-spacing: 0.06em; color: #8a7655; }
+
+/* ---------- Pict-captures: images from the machine spirit ---------- */
+.body figure.pict-frame {
+  position: relative;
+  margin: 0.8em 0;
+  padding: 10px 10px 6px;
+  max-width: 520px;
+  background:
+    linear-gradient(180deg, rgba(255,240,200,0.10), rgba(0,0,0,0.25)),
+    linear-gradient(90deg, var(--brass-lo), var(--brass) 20%, var(--brass-hi) 50%, var(--brass) 80%, var(--brass-lo));
+  border: 1px solid #2a1e0e;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 14px rgba(0,0,0,0.6);
+  text-shadow: none;
+}
+/* corner rivets */
+.body figure.pict-frame::before,
+.body figure.pict-frame::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f5deaa, #6b5129 70%);
+}
+.body figure.pict-frame::before { left: 4px; }
+.body figure.pict-frame::after { right: 4px; }
+.pict-view {
+  position: relative;
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  background: var(--screen);
+  border: 2px solid #120d06;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.9);
+  overflow: hidden;
+}
+.pict-view img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+/* the cogitator's scanlines over the pict */
+html.fx .pict-view::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.16) 2px 3px);
+}
+.pict-wait {
+  padding: 18px 12px;
+  font-family: var(--font-crt);
+  letter-spacing: 0.08em;
+  color: var(--phos-dim);
+  text-shadow: 0 0 6px var(--phos-glow);
+  text-align: center;
+}
+.pict-wait:not(.warn)::after { content: '…'; animation: blink 1s steps(2) infinite; }
+.pict-wait.warn { color: #ff8a7a; text-shadow: none; }
+.pict-view code.pict-path { margin: 0 10px 12px; font-size: 0.75rem; color: var(--phos-dim); overflow-wrap: anywhere; }
+.body figure.pict-frame figcaption {
+  margin-top: 6px;
+  font-family: var(--font-crt);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #1c1307;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Full-screen viewer */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 10px;
+  padding: calc(var(--safe-top) + 12px) calc(var(--safe-right) + 12px) calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px);
+  background: rgba(5, 4, 2, 0.94);
+}
+.lightbox img { width: 100%; height: 100%; object-fit: contain; min-height: 0; }
+.lightbox-bar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.lightbox-name { flex: 1; min-width: 0; color: var(--brass-hi); font-size: 0.85rem; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lightbox-bar a.rite-btn { text-decoration: none; }

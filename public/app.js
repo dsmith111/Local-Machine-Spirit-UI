@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.08-r8';
+  const BUILD = '2026.11.08-r9';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -467,6 +467,7 @@
       return;
     }
     for (const msg of conv.messages) el.log.append(renderMessage(msg));
+    hydratePicts(el.log);
     requestAnimationFrame(() => scrollToEnd(true));
     // A reply that was still being written when this device last looked.
     if (conv.pendingRun && !busy) resumeRun(conv);
@@ -523,6 +524,92 @@
       }
       cursor = keep.nextElementSibling;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Pict-captures: images in replies. Filled in only once a reply is complete,
+  // so a streaming reply never re-creates (and flashes) an image.
+  // -------------------------------------------------------------------------
+  const pictCache = new Map(); // key -> Promise<{ url } | { error }>
+
+  function loadPict(fig) {
+    const path = fig.dataset.media;
+    const key = path ? `m:${path}` : `s:${fig.dataset.src}`;
+    if (!pictCache.has(key)) {
+      pictCache.set(
+        key,
+        path
+          ? fetch(`/api/media?path=${encodeURIComponent(path)}`, { headers: authHeaders() }).then(async (res) => {
+              if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                pictCache.delete(key); // allow a retry on the next render
+                return { error: j?.error?.message || `status ${res.status}` };
+              }
+              return { url: URL.createObjectURL(await res.blob()) };
+            }, (err) => {
+              pictCache.delete(key);
+              return { error: err.message };
+            })
+          : Promise.resolve({ url: fig.dataset.src }),
+      );
+    }
+    return pictCache.get(key);
+  }
+
+  function hydratePicts(root) {
+    for (const fig of root.querySelectorAll('figure.pict-frame:not([data-ready])')) {
+      if (fig.closest('.body.cursor')) continue; // still streaming
+      fig.dataset.ready = '1';
+      const view = fig.querySelector('.pict-view');
+      const name = fig.dataset.name || 'pict';
+      loadPict(fig).then((r) => {
+        if (r.url) {
+          const img = h('img', { src: r.url, alt: name, loading: 'lazy', decoding: 'async' });
+          img.addEventListener('load', () => scrollToEnd());
+          img.addEventListener('error', () => view.replaceChildren(h('span', { class: 'pict-wait warn' }, 'The pict-capture is corrupted or unreadable.')));
+          img.addEventListener('click', () => openLightbox(r.url, name));
+          view.replaceChildren(img);
+        } else {
+          view.replaceChildren(
+            h('span', { class: 'pict-wait warn' }, `Pict-capture unreachable: ${r.error}`),
+            fig.dataset.media ? h('code', { class: 'pict-path' }, fig.dataset.media) : null,
+          );
+        }
+      });
+    }
+  }
+
+  const lightbox = h(
+    'div',
+    { class: 'lightbox', hidden: true, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Pict-capture' },
+    h('img', { alt: '' }),
+    h(
+      'div',
+      { class: 'lightbox-bar' },
+      h('span', { class: 'lightbox-name' }),
+      h('a', { class: 'rite-btn', download: 'pict.png', href: '#' }, 'Save'),
+      h('button', { type: 'button', class: 'rite-btn ghost', onclick: () => closeLightbox() }, 'Close'),
+    ),
+  );
+  document.body.append(lightbox);
+  lightbox.addEventListener('click', (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !lightbox.hidden) closeLightbox();
+  });
+  function openLightbox(url, name) {
+    lightbox.querySelector('img').src = url;
+    lightbox.querySelector('img').alt = name;
+    lightbox.querySelector('.lightbox-name').textContent = name;
+    const save = lightbox.querySelector('a');
+    save.href = url;
+    save.download = name;
+    lightbox.hidden = false;
+  }
+  function closeLightbox() {
+    lightbox.hidden = true;
+    lightbox.querySelector('img').removeAttribute('src');
   }
 
   async function copyText(text, btn) {
@@ -962,6 +1049,7 @@
       delete spirit.status;
       conv.messages.push(spirit);
       patchNode(node, renderMessage(spirit));
+      hydratePicts(node);
     } else {
       node.remove();
     }

@@ -3,7 +3,9 @@
  * All text is HTML-escaped first; only a fixed set of tags is generated.
  * Supports: fenced code (incl. unterminated while streaming), inline code,
  * headings, bold/italic/strike, links (http/https/mailto only), lists,
- * blockquotes, horizontal rules and pipe tables.
+ * blockquotes, horizontal rules, pipe tables, and images: harness MEDIA:<path>
+ * tags plus Markdown images with data: or https: sources, rendered as
+ * pict-capture frames the app fills in once a reply is complete.
  */
 (function () {
   'use strict';
@@ -124,18 +126,45 @@
     return html.join('');
   }
 
+  // Agent harnesses (Hermes) mark generated files with a line like
+  //   MEDIA:/home/me/.hermes/cache/scratch/picture.png
+  // optionally wrapped in quotes or backticks. Image paths become pict frames.
+  const IMG_EXT = 'png|jpe?g|gif|webp|bmp|svg';
+  const MEDIA_RE = new RegExp(
+    '(^|[\\s(])[`"\'*_]{0,3}MEDIA:\\s*(`[^`\\n]+`|"[^"\\n]+"|\'[^\'\\n]+\'|(?:~\\/|\\/)[^\\s`"\']+?\\.(?:' + IMG_EXT + '))(?=[\\s`"\'*_,;:)\\]}]|\\.(?:\\s|$)|$)[`"\'*_]{0,3}',
+    'gi',
+  );
+  const MD_IMG_RE = /!\[([^\]\n]*)\]\(\s*(data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+|https?:\/\/[^\s)]+)\s*\)/g;
+
+  function pictHtml(b) {
+    const name = b.path ? b.path.split('/').pop() : b.alt || 'pict';
+    const attr = b.path ? `data-media="${escapeHtml(b.path)}"` : `data-src="${escapeHtml(b.src.replace(/\s+/g, ''))}"`;
+    return (
+      `<figure class="pict-frame" ${attr} data-name="${escapeHtml(name)}">` +
+      `<div class="pict-view"><span class="pict-wait">Receiving pict-capture</span></div>` +
+      `<figcaption>+++ PICT-CAPTURE // ${escapeHtml(name)} +++</figcaption></figure>`
+    );
+  }
+
   function render(src) {
     if (!src) return '';
     const blocks = [];
-    // Fenced code blocks, including an unterminated trailing block (streaming).
-    let text = src.replace(/\r\n/g, '\n').replace(/(^|\n)```([^\n`]*)\n([\s\S]*?)(?:\n```[ \t]*(?=\n|$)|$)/g, (_, pre, lang, code) => {
-      blocks.push({ lang: lang.trim(), code });
+    const hold = (block, pre = '') => {
+      blocks.push(block);
       return `${pre}\n\u0001${blocks.length - 1}\u0001\n`;
-    });
+    };
+    // Fenced code blocks, including an unterminated trailing block (streaming).
+    let text = src.replace(/\r\n/g, '\n').replace(/(^|\n)```([^\n`]*)\n([\s\S]*?)(?:\n```[ \t]*(?=\n|$)|$)/g, (_, pre, lang, code) =>
+      hold({ type: 'code', lang: lang.trim(), code }, pre),
+    );
+    // Images: harness MEDIA tags and Markdown ![alt](data:… or https://…).
+    text = text.replace(MEDIA_RE, (_, pre, raw) => hold({ type: 'pict', path: raw.replace(/^[`"']|[`"']$/g, '').trim() }, pre));
+    text = text.replace(MD_IMG_RE, (_, alt, url) => hold({ type: 'pict', src: url, alt: alt.trim() }));
     text = escapeHtml(text);
     let html = renderBlocks(text);
     html = html.replace(/\u0001(\d+)\u0001/g, (_, idx) => {
       const b = blocks[Number(idx)];
+      if (b.type === 'pict') return pictHtml(b);
       const lang = escapeHtml(b.lang || 'data');
       return `<div class="codeblock"><div class="lang"><span>${lang}</span><button type="button" class="copy-btn" data-copy>Copy</button></div><pre><code>${escapeHtml(b.code)}</code></pre></div>`;
     });

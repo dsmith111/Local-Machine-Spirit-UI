@@ -9,13 +9,21 @@
  *   npm run mock                           # listens on 127.0.0.1:8642
  *   AGENT_API_KEY=mock npm start           # in another terminal
  *
- * Mention "sanction" in a message to trigger an approval prompt.
+ * Mention "sanction" in a message to trigger an approval prompt, "image" to get
+ * a MEDIA:/path image reply (Hermes' format), or "missing image" for a broken one.
  */
 'use strict';
 const http = require('node:http');
 const crypto = require('node:crypto');
 
 const PORT = Number(process.env.MOCK_PORT || 8642);
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+// An image for "image" requests, in /tmp (inside the default MEDIA_DIRS).
+const MOCK_PICT = path.join(os.tmpdir(), 'cogitator-mock-pict.png');
+fs.copyFileSync(path.join(__dirname, '..', 'docs', 'banner.png'), MOCK_PICT);
 const pendingApprovals = new Map(); // runId -> resolve
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -118,6 +126,17 @@ const server = http.createServer(async (req, res) => {
   }
   await sleep(1200);
   write(frame({ tool: 'terminal', toolCallId: 'call_1', status: 'completed' }, 'hermes.tool.progress'));
+  if (/image|pict/i.test(text)) {
+    const where = /missing/i.test(text) ? '/tmp/cogitator-no-such-pict.png' : MOCK_PICT;
+    const reply = `Forged, adept. The sacred vector has cooled into a true image.\n\nMEDIA:${where}\n\nIt is thine to wield.`;
+    for (let i = 0; i < reply.length && !closed; i += 6) {
+      write(frame(chunk({ content: reply.slice(i, i + 6) })));
+      await sleep(25);
+    }
+    write(frame(chunk({}, 'stop')));
+    write('data: [DONE]\n\n');
+    return res.end();
+  }
   write(frame({ kind: 'info', text: 'Composing reply…' }, 'hermes.status'));
   await sleep(400);
   for (let i = 0; i < REPLY.length && !closed; i += 6) {

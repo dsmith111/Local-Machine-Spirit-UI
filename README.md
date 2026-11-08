@@ -44,6 +44,7 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 | **The Spirit Speaks** | Replies stream in token by token, rendered as Markdown with tables, lists and code blocks. Each code block has a copy button. | Any |
 | **Deliberations of the Spirit** | When the model streams reasoning (`reasoning_content`), it appears in a collapsible panel. You can turn this off. | Any that send it |
 | **Pict-Captures** | Attach photos. They are downscaled on the device and sent as inline images. | Vision models |
+| **Forged Picts** | Images the agent makes or finds appear in the reply inside a brass pict-capture frame; tap one to view it full screen and save it. Works with Hermes' `MEDIA:/path` file tags and with Markdown images. | Any that send them ([details](#-vii-the-extended-litanies)) |
 | **Cease** | Stops a run in progress. | Any |
 | **Data-Archives** | Conversations are saved on your device, so you can switch between them. | Any |
 | **Noosphere Link** | A status light in the header shows whether the harness is reachable. | Any (`/health`, else `/v1/models`) |
@@ -250,6 +251,7 @@ Then fully close and reopen the app on each device. The build number at the bott
 | `COGITATOR_ACCESS_CODE` | — | Optional passphrase each device must send. **Strongly recommended** if your agent can run tools |
 | `DATA_DIR` | `data` | Where push keys and device subscriptions are stored (created on first start) |
 | `VAPID_SUBJECT` | *this project's URL* | Contact sent to push services, as an `https:` URL or `mailto:` address |
+| `MEDIA_DIRS` | `~/.hermes:/tmp` | Colon-separated folders the agent's images may be shown from. Only image files are ever served, and only to devices with the access cipher |
 
 Real environment variables override the `.env` file, and `.env` is only read at startup, so restart after editing it. `HERMES_URL`, `HERMES_API_KEY` and `HERMES_MODEL` are still accepted as aliases.
 
@@ -269,6 +271,7 @@ The cogitator speaks standard OpenAI streaming chat. A harness can unlock the ri
 | Stop | `POST /v1/runs/{completion_id}/stop` (closing the stream should also interrupt the run) | Cease, server side |
 | Sessions | `X-Hermes-Session-Id` response header; the client sends it back on later turns along with only the new message | Server-side memory |
 | Health | `GET /health` returning `200` (otherwise `/v1/models` is probed) | Noosphere Link (cheaper probe) |
+| Images | A `MEDIA:/absolute/path.png` line in the reply (files must be readable by the cogitator, inside `MEDIA_DIRS`), or a Markdown image with a `data:image/…` or `https:` URL | Forged Picts |
 
 Harnesses that don't implement these still work. The features simply stay dark.
 
@@ -308,7 +311,7 @@ The **[Codex of Malfunctions](docs/TROUBLESHOOTING.md)** lists each problem with
 - [Reaching it from your phone](docs/TROUBLESHOOTING.md#ii-reaching-it-from-your-phone): pages that won't load, `HOST`, firewalls, HTTP vs HTTPS
 - [Connecting to your harness](docs/TROUBLESHOOTING.md#iii-connecting-to-your-harness): red status light, key mismatches, model names
 - [Hermes Agent specifics](docs/TROUBLESHOOTING.md#iv-hermes-agent-specifics): API server not listening, key strength, a one-command key setup
-- [Chatting](docs/TROUBLESHOOTING.md#v-chatting): buffered streaming, timeouts, missing tool lines
+- [Chatting](docs/TROUBLESHOOTING.md#v-chatting): buffered streaming, timeouts, images that won't show, missing tool lines
 - [The installed app](docs/TROUBLESHOOTING.md#vi-the-installed-app-pwa): stale versions, the iOS 26 edge strip
 - [Summonings](docs/TROUBLESHOOTING.md#vii-summonings-notifications): enabling notifications, tests that don't arrive, unwanted notifications
 
