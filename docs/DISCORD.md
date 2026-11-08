@@ -105,7 +105,13 @@ Notes:
 
 ## IV. The guest soul
 
-Give guests the same Machine Spirit, with visitor manners. Create `~/.hermes/profiles/guest/SOUL.md`:
+Give guests the same Machine Spirit, with visitor manners. Copy the ready-made one from this repo:
+
+```bash
+cp ~/Repos/Local-Machine-Spirit-UI/deploy/hermes/guest-SOUL.md ~/.hermes/profiles/guest/SOUL.md
+```
+
+(Adjust the repo path if yours differs.) Its contents:
 
 ```markdown
 # Identity
