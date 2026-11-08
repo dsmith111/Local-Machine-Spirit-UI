@@ -63,11 +63,11 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 
 <table align="center">
   <tr>
-    <td align="center" width="50%"><img src="docs/pict-forged.jpg" alt="A picture the machine spirit produced, shown inline in a brass pict-capture frame" width="300"></td>
+    <td align="center" width="50%"><img src="docs/pict-forged.jpg" alt="A picture the machine spirit obtained, shown inline in a brass pict-capture frame" width="300"></td>
     <td align="center" width="50%"><img src="docs/pict-examined.jpg" alt="A photo sent by the user, described by the machine spirit using its vision rite" width="300"></td>
   </tr>
   <tr>
-    <td align="center"><b>A pict delivered.</b><br><sub>An image the spirit produced appears inline in its brass pict-capture frame. Tap to view full screen and save.</sub></td>
+    <td align="center"><b>A pict delivered.</b><br><sub>An image the spirit obtained appears inline in its brass pict-capture frame. Tap to view full screen and save.</sub></td>
     <td align="center"><b>A pict examined.</b><br><sub>Attach a photo with the camera button and the spirit studies it with its vision rite.</sub></td>
   </tr>
 </table>
