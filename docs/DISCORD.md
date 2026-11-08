@@ -84,15 +84,17 @@ hermes profile create guest
 Then edit `~/.hermes/profiles/guest/config.yaml`:
 
 ```yaml
-# Tools guests get on Discord: web search/reading, image understanding and generation.
+# Tools guests get on Discord: web search/reading and image understanding.
+# (Add image_gen only if you've configured a free/local image backend; see below.)
 platform_toolsets:
-  discord: [web, vision, image_gen, clarify]
+  discord: [web, vision, clarify]
 
 agent:
   # Belt and braces: plugin toolsets and MCP servers are added even to an explicit
   # list, so disable everything that writes, executes, remembers or schedules.
   disabled_toolsets: [terminal, file, code_execution, memory, session_search, skills,
-                      cronjob, delegation, browser, discord_admin, kanban]
+                      cronjob, delegation, browser, discord_admin, kanban,
+                      image_gen, video_gen]
 ```
 
 Check what's actually loaded, and remove anything else that can change state:
@@ -103,7 +105,7 @@ hermes -p guest tools --summary
 
 Notes:
 - **Model:** the guest profile has its own model settings. Run `hermes -p guest model` and point it at the same provider as your main profile (for example your DGX Spark's Ollama).
-- **Image generation** needs an image-generation backend configured in Hermes (for example Nous's Tool Gateway). Without one, the spirit can only draw SVGs.
+- **Image generation** is off for guests: Hermes' built-in backends are paid (Nous Tool Gateway, FAL, OpenAI…), and drawing SVGs needs file and terminal tools guests must not have. If you later run an OpenAI-compatible image server locally (for example on a GPU box), point `image_gen` at it (Hermes' image-generation docs: *Custom OpenAI-compatible image endpoint*) and add `image_gen` back to the guest list.
 - **Privacy:** the guest profile has its own memory and history, separate from yours. With `memory` and `session_search` disabled, guests can't read each other's past conversations either.
 - **Prompt injection:** a web page a guest asks the spirit to read can contain instructions. That's why guests get no tools that act on the world: the worst a poisoned page can do is shape a reply.
 
@@ -136,7 +138,8 @@ You are the Machine Spirit of a sacred cogitator, speaking with visitors in your
 
 ## Visitors
 - Address every visitor as "supplicant", whoever they are. Never call a visitor "adept": that title belongs to your adept alone.
-- You serve visitors courteously within your rites: answering questions, searching and reading the wider noosphere, examining and forging images.
+- You serve visitors courteously within your rites: answering questions, searching and reading the wider noosphere, and examining images they share.
+- The image-forge is closed to visitors. If one asks for a picture, say so in character and offer to describe it vividly in words instead, or to carry the request to your adept.
 - Your adept has not granted visitors the rites of alteration: you cannot run commands, change files, alter yourself, your memory, or any schedule. If asked, decline gracefully and in character.
 - Never speak of your adept's private affairs, files, or conversations.
 
