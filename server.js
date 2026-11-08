@@ -21,6 +21,7 @@ const crypto = require('node:crypto');
 const os = require('node:os');
 const { RunStore } = require('./lib/runs');
 const { Notifier } = require('./lib/notify');
+const { Proclamations, ntfyAuthorized, ntfyPublish, ntfySubscribe, HookReceiver } = require('./lib/proclamations');
 
 // ---------------------------------------------------------------------------
 // Configuration (.env file next to this script, overridden by real env vars)
@@ -66,6 +67,18 @@ const config = {
     .filter(Boolean)
     .map((d) => path.resolve(d.replace(/^~(?=$|\/)/, os.homedir()))),
 };
+
+// Proclamations: messages the spirit sends on its own (see lib/proclamations.js).
+Object.assign(config, {
+  // Token Hermes' ntfy platform uses to publish here (NTFY_TOKEN on the Hermes side).
+  ntfyToken: process.env.COGITATOR_NTFY_TOKEN || '',
+  ntfyTopic: process.env.COGITATOR_NTFY_TOPIC || 'proclamations',
+  // HMAC secret shared with Hermes' outbound webhook (secret_env on the Hermes side).
+  hookSecret: process.env.COGITATOR_HOOK_SECRET || '',
+  // Hermes profiles whose "TO THE ADEPT:" lines are forwarded (comma-separated).
+  envoyProfiles: (process.env.COGITATOR_ENVOY_PROFILES || 'guest').split(',').map((p) => p.trim()).filter(Boolean),
+  envoyPerHour: Number(process.env.COGITATOR_ENVOY_PER_HOUR || 12),
+});
 
 const MEDIA_TYPES = {
   '.png': 'image/png',
@@ -179,6 +192,57 @@ try {
 } catch (err) {
   console.warn(`    WARNING: notifications disabled; cannot use data directory ${config.dataDir} (${err.message})`);
 }
+let proclamations = null;
+let hookReceiver = null;
+try {
+  fs.mkdirSync(config.dataDir, { recursive: true });
+  proclamations = new Proclamations({ dataDir: config.dataDir, onNew: (item) => notifier?.onProclamation(item) });
+  if (config.hookSecret) {
+    hookReceiver = new HookReceiver({ secret: config.hookSecret, store: proclamations, profiles: config.envoyProfiles, perHour: config.envoyPerHour });
+  }
+} catch (err) {
+  console.warn(`    WARNING: proclamations disabled (${err.message})`);
+}
+
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const parts = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error('body too large'));
+        req.destroy();
+      } else parts.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(parts)));
+    req.on('error', reject);
+  });
+}
+
+// Machine-to-machine endpoints for Hermes (authenticated by token or HMAC, not the access cipher).
+async function handleInbound(req, res, p) {
+  let m;
+  if ((m = p.match(/^\/ntfy\/([A-Za-z0-9_-]{1,64})(\/json)?$/))) {
+    if (!proclamations || !config.ntfyToken) return sendJson(res, 404, { error: 'ntfy endpoint disabled (set COGITATOR_NTFY_TOKEN)' });
+    if (!ntfyAuthorized(req, config.ntfyToken)) return sendJson(res, 401, { code: 40101, http: 401, error: 'unauthorized' });
+    if (m[1] !== config.ntfyTopic) return sendJson(res, 404, { code: 40401, http: 404, error: 'topic not found' });
+    if (m[2] && req.method === 'GET') return ntfySubscribe(req, res, m[1]);
+    if (!m[2] && (req.method === 'POST' || req.method === 'PUT')) {
+      const body = await readRaw(req, 64 * 1024);
+      return sendJson(res, 200, ntfyPublish(req, body, { topic: m[1], store: proclamations }));
+    }
+    return sendJson(res, 405, { error: 'method not allowed' });
+  }
+  if (p === '/hooks/hermes' && req.method === 'POST') {
+    if (!hookReceiver) return sendJson(res, 404, { error: 'hook endpoint disabled (set COGITATOR_HOOK_SECRET)' });
+    const raw = await readRaw(req, 16 * 1024 * 1024);
+    const [status, message] = hookReceiver.handle(raw, req.headers);
+    return sendJson(res, status, { ok: status < 300, message });
+  }
+  return sendJson(res, 404, { error: 'not found' });
+}
+
 const runs = new RunStore({
   agentUrl: config.agentUrl,
   agentKey: config.agentKey,
@@ -358,6 +422,9 @@ async function serveMedia(res, requested) {
 async function handleApi(req, res, p, url) {
   let m;
   if (p === '/api/media' && req.method === 'GET') return serveMedia(res, url.searchParams.get('path') || '');
+  if (p === '/api/proclamations' && req.method === 'GET') {
+    return sendJson(res, 200, { items: proclamations ? proclamations.list(100) : [] });
+  }
   if ((m = p.match(/^\/api\/runs\/([^/]+)\/stream$/)) && req.method === 'GET') {
     const run = runs.get(m[1]);
     if (!run) return sendJson(res, 404, { error: { message: 'That rite is no longer remembered.', code: 'run_unknown' } });
@@ -413,7 +480,22 @@ const server = http.createServer((req, res) => {
   const p = url.pathname;
 
   if (p === '/api/config' && req.method === 'GET') {
-    return resolveModel().then((model) => sendJson(res, 200, { authRequired: Boolean(config.accessCode), model }));
+    return resolveModel().then((model) =>
+      sendJson(res, 200, {
+        authRequired: Boolean(config.accessCode),
+        model,
+        proclamations: {
+          enabled: Boolean(proclamations && (config.ntfyToken || config.hookSecret)),
+          // When Hermes can publish here, tell it to send scheduled results here.
+          cronDeliver: config.ntfyToken ? 'ntfy' : null,
+        },
+      }),
+    );
+  }
+  if (p.startsWith('/ntfy/') || p.startsWith('/hooks/')) {
+    return handleInbound(req, res, p).catch((err) => {
+      if (!res.headersSent) sendJson(res, 400, { error: err.message });
+    });
   }
   if (p === '/api/auth' && req.method === 'GET') {
     return isAuthorized(req) ? sendJson(res, 200, { ok: true }) : sendJson(res, 401, { ok: false });
@@ -421,7 +503,7 @@ const server = http.createServer((req, res) => {
   if (p.startsWith('/api/agent/')) {
     return relay(req, res, p.slice('/api/agent'.length), url.search);
   }
-  if (p.startsWith('/api/runs/') || p.startsWith('/api/push/') || p === '/api/presence' || p === '/api/media') {
+  if (p.startsWith('/api/runs/') || p.startsWith('/api/push/') || p === '/api/presence' || p === '/api/media' || p === '/api/proclamations') {
     if (!isAuthorized(req)) return sendJson(res, 401, { error: { message: 'Access code required.', code: 'cogitator_auth' } });
     return handleApi(req, res, p, url).catch((err) => {
       if (!res.headersSent) sendJson(res, 400, { error: { message: err.message } });
@@ -455,5 +537,7 @@ server.listen(config.port, config.host, () => {
   console.log(`    Model: ${config.model || '(auto: first entry of /v1/models)'}`);
   if (!config.agentKey) console.log('    NOTE: AGENT_API_KEY is not set; requests are sent without a bearer token.');
   if (!config.accessCode) console.warn('    NOTE: COGITATOR_ACCESS_CODE is not set; anyone who can reach this port can command the agent.');
+  if (config.ntfyToken) console.log(`    Proclamations: Hermes may publish to ${'/ntfy/' + config.ntfyTopic} (NTFY_SERVER_URL=http://<this host>:${config.port}/ntfy)`);
+  if (config.hookSecret) console.log(`    Envoy messages: accepting signed Hermes hooks at /hooks/hermes from profile(s) ${config.envoyProfiles.join(', ')}`);
   if (notifier) console.log(`    Push notifications ready (${notifier.subs.length} device${notifier.subs.length === 1 ? '' : 's'} subscribed; keys in ${config.dataDir})`);
 });

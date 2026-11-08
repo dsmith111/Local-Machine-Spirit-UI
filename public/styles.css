@@ -758,3 +758,31 @@ html.fx .pict-view::after {
 .lightbox-bar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .lightbox-name { flex: 1; min-width: 0; color: var(--brass-hi); font-size: 0.85rem; letter-spacing: 0.08em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lightbox-bar a.rite-btn { text-decoration: none; }
+
+/* ---------- Proclamations ---------- */
+.archive-list li.pinned .open { border: 1px solid var(--brass-lo); background: linear-gradient(90deg, rgba(180,146,90,0.14), rgba(0,0,0,0.2)); }
+.archive-list li.pinned .t { color: var(--brass-hi); font-family: var(--font-gothic); letter-spacing: 0.08em; }
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px; height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--rust-hi);
+  color: #fff;
+  font: 600 11px/1 system-ui, sans-serif;
+  letter-spacing: 0;
+  vertical-align: 2px;
+}
+#btn-archives { position: relative; }
+#btn-archives .count { position: absolute; top: -6px; right: -6px; margin: 0; box-shadow: 0 0 0 2px #2a1e0e; }
+.proc-banner { text-align: center; margin: 6px 0 20px; }
+.proc-title { font-family: var(--font-gothic); font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--phos); }
+.proc-sub { margin-top: 4px; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--phos-dim); }
+.proc-empty { color: var(--phos-dim); text-align: center; font-style: italic; }
+.entry.proclamation { border-left: 2px solid var(--phos-faint); padding-left: 10px; }
+.entry.proclamation.unread { border-left-color: var(--phos); }
+.entry.proclamation .entry-head .who::before, .entry.proclamation .entry-head .who::after { content: none; }
+.proc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.proc-tags span { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid var(--phos-faint); color: var(--phos-dim); padding: 0 6px; }

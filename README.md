@@ -52,6 +52,7 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 | **Ritual Speech** *(optional)* | Adds a system prompt so the agent answers in character as a machine spirit while keeping the content accurate. Off by default. | Any |
 | **Installable** | Works as a full-screen PWA with its own icon, and the app loads offline. | HTTPS |
 | **Summonings** | Push notifications when you're away: an answer is ready, a sanction (approval) is needed, or a rite failed. Tap one to open that conversation. Never sent while you're looking at the app. | HTTPS ([details](#-summonings-notifications)) |
+| **Proclamations** | The spirit reaches out on its own: reminders and scheduled reports from the agent, and messages Discord visitors ask it to pass on, arrive in a pinned Proclamations view and as summonings. | Hermes ([setup](#-proclamations-the-spirit-reaches-out)) |
 | **Unbroken Rites** | Lock your phone or close the app mid-reply: the server keeps the run going, and the app reconnects and replays it when you return. **Cease** is the only thing that stops a run. | Any |
 | **Rites Invoked** | When the agent uses a tool (terminal, web search, files…), a `[ INVOKING ]` line appears and turns to `[ COMPLETE ]` when it finishes. | Extended |
 | **Sanction Required** | When the agent wants to run a dangerous command, it pauses and asks you to *Grant once*, *Grant for this communion*, *Grant eternally*, or *Forbid*. | Extended |
@@ -69,6 +70,30 @@ The cogitator sends real push notifications through your phone's push service (A
 **To enable:** open **Configuration Rites** → **Summonings** → **Enable summonings**, allow notifications, then tap **Send test**. Choose which events summon you and whether notifications include a preview of the message. Each device is enabled separately.
 
 You're notified only when you're away: if the device that started a run is looking at the app, it stays quiet. A tapped notification opens its conversation, and the app icon shows a badge until you open the app.
+
+### ⚜ Proclamations: the spirit reaches out
+
+Reminders and scheduled jobs normally can't reach an app like this: Hermes can only deliver them to messaging platforms. So the cogitator **acts as one of them**. It accepts Hermes' ntfy deliveries directly, with no ntfy server needed, and shows each one as a Proclamation with a summoning.
+
+1. Pick a token: `openssl rand -hex 32`.
+2. Cogitator `.env`:
+   ```bash
+   COGITATOR_NTFY_TOKEN=<token>
+   ```
+3. Hermes `~/.hermes/.env` (use the cogitator's own `PORT`):
+   ```bash
+   NTFY_SERVER_URL=http://127.0.0.1:8080/ntfy
+   NTFY_TOPIC=proclamations
+   NTFY_HOME_CHANNEL=proclamations
+   NTFY_TOKEN=<the same token>
+   NTFY_MARKDOWN=true
+   ```
+   Leave `NTFY_ALLOWED_USERS` unset: this channel is one-way.
+4. Restart both (`hermes gateway restart`, `sudo systemctl restart local-cogitator-interface`).
+
+Now ask the spirit, *"Remind me in 10 minutes to stretch"*, or *"Every morning at 8, report on my host's condition."* While Proclamations are set up, the app asks Hermes to deliver scheduled results to `ntfy` (unless you name another destination), so they land under **⚜ Proclamations** in the archive drawer, with an unread badge and a summoning. **Discuss** on a proclamation starts a new conversation about it.
+
+Running the spirit on **Discord** too? [docs/DISCORD.md](docs/DISCORD.md) sets up a bot strangers can talk to safely, with limits enforced by Hermes. Messages they ask the spirit to pass to you arrive here as proclamations.
 
 ---
 
@@ -251,6 +276,11 @@ Then fully close and reopen the app on each device. The build number at the bott
 | `COGITATOR_ACCESS_CODE` | — | Optional passphrase each device must send. **Strongly recommended** if your agent can run tools |
 | `DATA_DIR` | `data` | Where push keys and device subscriptions are stored (created on first start) |
 | `VAPID_SUBJECT` | *this project's URL* | Contact sent to push services, as an `https:` URL or `mailto:` address |
+| `COGITATOR_NTFY_TOKEN` | — | Enables the ntfy endpoint (`/ntfy/<topic>`) Hermes delivers proclamations to; use the same value as Hermes' `NTFY_TOKEN` |
+| `COGITATOR_NTFY_TOPIC` | `proclamations` | Topic name; must match Hermes' `NTFY_TOPIC` |
+| `COGITATOR_HOOK_SECRET` | — | Enables `/hooks/hermes` for Discord envoy messages ([docs/DISCORD.md](docs/DISCORD.md)) |
+| `COGITATOR_ENVOY_PROFILES` | `guest` | Hermes profiles whose `TO THE ADEPT:` lines are forwarded |
+| `COGITATOR_ENVOY_PER_HOUR` | `12` | Flood guard for forwarded envoy messages |
 | `MEDIA_DIRS` | `~/.hermes:/tmp` | Colon-separated folders the agent's images may be shown from. Only image files are ever served, and only to devices with the access cipher |
 
 Real environment variables override the `.env` file, and `.env` is only read at startup, so restart after editing it. `HERMES_URL`, `HERMES_API_KEY` and `HERMES_MODEL` are still accepted as aliases.
@@ -298,6 +328,7 @@ Put the word **"sanction"** in a message to trigger an approval prompt.
 - The relay only forwards a short allowlist of endpoints: health, models, chat completions, and stop/approval for runs. It adds the bearer token on the server.
 - Conversation history in the app is stored in each device's `localStorage`. **Purge Archives** in settings clears it.
 - `data/` holds the server's private push key and your devices' push subscriptions. It's created with owner-only permissions and ignored by git. Don't share it. Deleting it just means each device has to enable summonings again.
+- `/ntfy/…` and `/hooks/hermes` are for Hermes, not browsers. They're off unless you set their token or secret, and each request must carry it (a bearer token, or an HMAC signature with a freshness check). Keep Hermes pointed at `127.0.0.1`.
 - Runs are kept in the server's memory for an hour after they finish, so devices can reconnect to them. Restarting the service clears them.
 
 ---
@@ -314,6 +345,7 @@ The **[Codex of Malfunctions](docs/TROUBLESHOOTING.md)** lists each problem with
 - [Chatting](docs/TROUBLESHOOTING.md#v-chatting): buffered streaming, timeouts, images that won't show, missing tool lines
 - [The installed app](docs/TROUBLESHOOTING.md#vi-the-installed-app-pwa): stale versions, the iOS 26 edge strip
 - [Summonings](docs/TROUBLESHOOTING.md#vii-summonings-notifications): enabling notifications, tests that don't arrive, unwanted notifications
+- [Proclamations](docs/TROUBLESHOOTING.md#viii-proclamations): reminders that never arrive, Discord messages that don't come through
 
 ---
 
@@ -328,11 +360,13 @@ scripts/make-icons.js        regenerates PNG icons from public/icons/icon.svg (n
 scripts/make-readme-art.js   regenerates docs/banner.png and docs/screenshots.png (needs Playwright)
 lib/runs.js                  keeps runs going when a device leaves; reconnect and replay
 lib/notify.js                push subscriptions, presence, and when to notify
+lib/proclamations.js         proclamations: ntfy endpoint for Hermes, signed envoy hook
 lib/webpush.js               Web Push encryption and signing (node:crypto only)
 test/                        unit tests (npm test)
 scripts/install-service.sh   installs, starts or removes the systemd service (--print, --uninstall)
 deploy/                      example systemd unit (reference; the installer writes the real one)
 docs/TROUBLESHOOTING.md      the Codex of Malfunctions
+docs/DISCORD.md              the spirit on Discord, with safe guest access
 data/                        created at runtime: push keys and subscriptions (git-ignored)
 docs/                        README art
 ```

@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.08-r9';
+  const BUILD = '2026.11.08-r10';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -45,13 +45,13 @@
     reasoning: true,
     fx: true,
     boot: true,
-    push: { answers: true, sanctions: true, faults: true, previews: true },
+    push: { answers: true, sanctions: true, faults: true, proclamations: true, previews: true },
   };
   let settings = { ...DEFAULT_SETTINGS, ...store.get(LS_SETTINGS, {}) };
   settings.push = { ...DEFAULT_SETTINGS.push, ...(settings.push || {}) };
   let archives = store.get(LS_ARCHIVES, []);
   let currentId = store.get(LS_CURRENT, null);
-  let serverConfig = { authRequired: false, model: 'default' };
+  let serverConfig = { authRequired: false, model: 'default', proclamations: { enabled: false, cronDeliver: null } };
 
   const RITUAL_PROMPT =
     'Adopt the persona of a venerable machine spirit dwelling within a sacred cogitator, addressing the user as an honoured adept. ' +
@@ -274,6 +274,21 @@
         ),
     );
     if (!archives.length) el.archiveList.append(h('li', { class: 'drawer-foot' }, 'The archives are empty.'));
+    if (serverConfig.proclamations?.enabled || proclamations.length) {
+      const unread = unreadProclamations();
+      el.archiveList.prepend(
+        h(
+          'li',
+          { class: 'pinned' + (currentId === PROC_ID ? ' active' : '') },
+          h(
+            'button',
+            { class: 'open', type: 'button', onclick: () => openConversation(PROC_ID) },
+            h('span', { class: 't' }, '⚜ Proclamations', unread ? h('span', { class: 'count' }, String(unread)) : null),
+            h('span', { class: 'd' }, proclamations.length ? `Last: ${fmtDate(proclamations[proclamations.length - 1].at)}` : 'Reminders, reports and messages the spirit sends thee'),
+          ),
+        ),
+      );
+    }
   }
 
   function openDrawer() {
@@ -460,6 +475,7 @@
   }
 
   function renderConversation() {
+    if (currentId === PROC_ID) return renderProclamations();
     const conv = current();
     el.log.replaceChildren();
     if (!conv || !conv.messages.length) {
@@ -475,7 +491,7 @@
 
   /** Switch to a conversation (from a notification tap, for example). */
   function openConversation(id) {
-    if (!id || !archives.some((c) => c.id === id)) return;
+    if (!id || (id !== PROC_ID && !archives.some((c) => c.id === id))) return;
     if (busy && id !== currentId) return;
     if (id !== currentId) {
       currentId = id;
@@ -681,10 +697,16 @@
     }
   }
   setInterval(() => {
-    if (document.visibilityState === 'visible') checkLink();
+    if (document.visibilityState === 'visible') {
+      checkLink();
+      fetchProclamations();
+    }
   }, 30000);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkLink();
+    if (document.visibilityState === 'visible') {
+      checkLink();
+      fetchProclamations();
+    }
   });
   window.addEventListener('online', checkLink);
   window.addEventListener('offline', checkLink);
@@ -808,6 +830,12 @@
 
   function systemPrompt() {
     const parts = [];
+    if (serverConfig.proclamations?.cronDeliver) {
+      parts.push(
+        `When you create a scheduled job or reminder (the cronjob tool), set its deliver target to "${serverConfig.proclamations.cronDeliver}" ` +
+          'unless the user names another destination, so the result reaches them in this app.',
+      );
+    }
     if (settings.ritual) parts.push(RITUAL_PROMPT);
     if (settings.system) parts.push(settings.system);
     return parts.join('\n\n');
@@ -845,7 +873,10 @@
 
   async function transmit(text, images, { reuseUser } = {}) {
     let conv = current();
-    if (!conv) conv = newConversation();
+    if (!conv) {
+      conv = newConversation();
+      el.log.replaceChildren(); // leaving the proclamations view, if it was showing
+    }
 
     let userMsg = reuseUser;
     if (!userMsg) {
@@ -1164,6 +1195,109 @@
   }
 
   // -------------------------------------------------------------------------
+  // Proclamations: reminders, scheduled reports and envoy messages the spirit
+  // sends on its own. Kept on the server; shown in a pinned, read-only view.
+  // -------------------------------------------------------------------------
+  const PROC_ID = '__proclamations__';
+  const LS_PROC_SEEN = 'cogitator.proclamations.seen.v1';
+  let proclamations = [];
+  let procSeen = store.get(LS_PROC_SEEN, 0);
+
+  function unreadProclamations() {
+    return proclamations.filter((p) => p.at > procSeen).length;
+  }
+
+  function markProclamationsSeen() {
+    const last = proclamations.length ? proclamations[proclamations.length - 1].at : 0;
+    if (last > procSeen) {
+      procSeen = last;
+      store.set(LS_PROC_SEEN, procSeen);
+    }
+    updateProcBadge();
+  }
+
+  function updateProcBadge() {
+    const n = unreadProclamations();
+    let badge = document.querySelector('#btn-archives .count');
+    if (!n) return badge?.remove();
+    if (!badge) {
+      badge = h('span', { class: 'count', 'aria-label': 'unread proclamations' });
+      $('#btn-archives').append(badge);
+    }
+    badge.textContent = n > 9 ? '9+' : String(n);
+  }
+
+  async function fetchProclamations() {
+    if (!serverConfig.proclamations?.enabled && !proclamations.length) return;
+    try {
+      const res = await fetch('/api/proclamations', { headers: authHeaders(), cache: 'no-store' });
+      if (!res.ok) return;
+      const items = (await res.json()).items || [];
+      const changed = items.length !== proclamations.length || items[items.length - 1]?.id !== proclamations[proclamations.length - 1]?.id;
+      proclamations = items;
+      if (changed && currentId === PROC_ID && !busy) renderProclamations();
+      else if (currentId === PROC_ID && document.visibilityState === 'visible') markProclamationsSeen();
+      updateProcBadge();
+      if (!el.drawer.hidden) renderArchiveList();
+    } catch {
+      /* offline */
+    }
+  }
+
+  function renderProclamation(item) {
+    const who = item.source === 'envoy' ? `✉ ${item.title || 'A message for thee'}` : `⚜ ${item.title || 'Proclamation'}`;
+    const body = h('div', { class: 'body', html: Markdown.render(item.body) });
+    const discuss = () => {
+      currentId = null;
+      persist();
+      renderConversation();
+      const quote = item.body.split('\n').slice(0, 12).map((l) => `> ${l}`).join('\n');
+      el.input.value = `Regarding this proclamation:\n${quote}\n\n`;
+      autoGrow();
+      el.input.focus();
+    };
+    return h(
+      'section',
+      { class: 'entry spirit proclamation' + (item.at > procSeen ? ' unread' : '') },
+      h('div', { class: 'entry-head' }, h('span', { class: 'who' }, who), h('span', { class: 'rule' }), h('time', null, fmtDate(item.at))),
+      item.tags?.length ? h('div', { class: 'proc-tags' }, item.tags.map((t) => h('span', null, t))) : null,
+      body,
+      h(
+        'div',
+        { class: 'meta-line' },
+        h('button', { type: 'button', onclick: discuss }, 'Discuss'),
+        h('button', { type: 'button', onclick: (e) => copyText(item.body, e.currentTarget) }, 'Copy'),
+      ),
+    );
+  }
+
+  function renderProclamations() {
+    el.log.replaceChildren(
+      h(
+        'div',
+        { class: 'proc-banner' },
+        h('div', { class: 'proc-title' }, '⚜ Proclamations ⚜'),
+        h('div', { class: 'proc-sub' }, 'Reminders, scheduled reports, and messages carried from afar'),
+      ),
+    );
+    if (!proclamations.length) {
+      el.log.append(
+        h(
+          'p',
+          { class: 'proc-empty' },
+          serverConfig.proclamations?.enabled
+            ? 'No proclamations yet. Ask the spirit to remind thee of something, or to report on a schedule.'
+            : 'Proclamations are not configured on this cogitator. See the README: Proclamations.',
+        ),
+      );
+    }
+    for (const item of proclamations) el.log.append(renderProclamation(item));
+    hydratePicts(el.log);
+    requestAnimationFrame(() => scrollToEnd(true));
+    if (document.visibilityState === 'visible') markProclamationsSeen();
+  }
+
+  // -------------------------------------------------------------------------
   // Presence: tell the server whether this device is looking at the app, so
   // it only sends notifications when you're away.
   // -------------------------------------------------------------------------
@@ -1397,6 +1531,7 @@
 
     renderConversation();
     checkLink();
+    fetchProclamations();
     reportPresence();
     navigator.clearAppBadge?.().catch(() => {});
     syncPush();

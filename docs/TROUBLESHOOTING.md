@@ -25,7 +25,8 @@ Each entry gives the **symptom**, its **cause**, and the **rite of repair** (the
 5. [Chatting](#v-chatting)
 6. [The installed app (PWA)](#vi-the-installed-app-pwa)
 7. [Summonings (notifications)](#vii-summonings-notifications)
-8. [Starting over](#viii-starting-over)
+8. [Proclamations](#viii-proclamations)
+9. [Starting over](#ix-starting-over)
 
 ---
 
@@ -261,7 +262,32 @@ The app reports when it's visible, and the server stays quiet for the device you
 
 ---
 
-## VIII. Starting over
+## VIII. Proclamations
+
+### No ⚜ Proclamations entry in the drawer
+It appears once `COGITATOR_NTFY_TOKEN` or `COGITATOR_HOOK_SECRET` is set (and the cogitator restarted), or once a proclamation exists. The startup log (`journalctl -u local-cogitator-interface -n 20`) should show `Proclamations: Hermes may publish to /ntfy/proclamations`.
+
+### A reminder or scheduled job never arrived
+1. **Did the job run?** `hermes cron list` shows each job's last run and any delivery error. Job output is always saved under `~/.hermes/cron/output/<job id>/`, even if delivery fails.
+2. **Where did it deliver?** The job's `deliver` must be `ntfy` (or include it, e.g. `discord,ntfy`). The app asks Hermes for this, but the agent decides, and jobs created elsewhere (Discord, the CLI) deliver there by default. Say *"deliver it to ntfy"* when creating one, or change it with `hermes cron edit`.
+3. **Can Hermes reach the cogitator?** On the Hermes host:
+   ```bash
+   curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:<PORT>/ntfy/proclamations -d "Test proclamation"
+   ```
+   A JSON reply means the cogitator accepted it, and it should appear in the app. `401` means the token doesn't match `COGITATOR_NTFY_TOKEN`; `404` means the topic doesn't match `COGITATOR_NTFY_TOPIC` (or the endpoint is off).
+4. **Is Hermes' ntfy platform up?** `hermes gateway status`, and look for ntfy errors in `hermes logs gateway -n 200 | grep -i ntfy`. `NTFY_SERVER_URL` must end in `/ntfy` and use the cogitator's own port, not a reverse proxy's.
+
+### Proclamations start with "Cronjob Response: …"
+They shouldn't: the cogitator strips Hermes' standard header and footer and uses the job name as the title. If Hermes changed its format, set `cron.wrap_response: false` in `~/.hermes/config.yaml` to send bare results.
+
+### A Discord visitor's message for me never arrived
+- The guest spirit must actually write a `TO THE ADEPT:` line in its reply. Check the reply in Discord. If it didn't, strengthen that instruction in the guest profile's `SOUL.md` ([docs/DISCORD.md](DISCORD.md#iv-the-guest-soul)).
+- `hermes -p guest hooks list` should show the `cogitator-envoy` target as signed.
+- The cogitator log shows rejected hooks. Common causes: a different secret on each side; a clock difference over 5 minutes (`timedatectl`); `COGITATOR_ENVOY_PROFILES` not matching the profile name; or the hourly flood guard (`COGITATOR_ENVOY_PER_HOUR`).
+
+---
+
+## IX. Starting over
 
 - **Clear conversations on one device:** Configuration Rites → **Purge Archives**.
 - **Reset all settings on one device:** clear the site's data in the browser (iOS: Settings → Apps → Safari → Advanced → Website Data), or remove and re-add the installed app.
