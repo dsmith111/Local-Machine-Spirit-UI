@@ -58,6 +58,20 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 | **Sanction Required** | When the agent wants to run a dangerous command, it pauses and asks you to *Grant once*, *Grant for this communion*, *Grant eternally*, or *Forbid*. | Extended |
 | **Server-side memory** | Each conversation is tied to a harness session, so the agent keeps the full history, including tool calls. | Extended |
 
+### 🖼 Pict-captures in the field
+*Images in the conversation, on a real iPhone*
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%"><img src="docs/pict-forged.jpg" alt="A picture the machine spirit produced, shown inline in a brass pict-capture frame" width="300"></td>
+    <td align="center" width="50%"><img src="docs/pict-examined.jpg" alt="A photo sent by the user, described by the machine spirit using its vision rite" width="300"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>A pict delivered.</b><br><sub>An image the spirit produced appears inline in its brass pict-capture frame. Tap to view full screen and save.</sub></td>
+    <td align="center"><b>A pict examined.</b><br><sub>Attach a photo with the camera button and the spirit studies it with its vision rite.</sub></td>
+  </tr>
+</table>
+
 ### ✉ Summonings (notifications)
 
 The cogitator sends real push notifications through your phone's push service (Apple, Google or Mozilla), so they arrive even when the app is closed. Messages are end-to-end encrypted ([RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)): the push service only relays ciphertext. No account or third-party package is involved; the server generates its own keys on first start.
