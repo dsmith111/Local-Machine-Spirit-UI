@@ -37,10 +37,14 @@ Add to `~/.hermes/.env`:
 
 ```bash
 DISCORD_BOT_TOKEN=<bot token>
-# Who may talk to the bot at all. Pick one:
-DISCORD_ALLOWED_ROLES=<guest role id>      # members with this role (you need it too, or add yourself below)
-DISCORD_ALLOWED_USERS=<your user id>       # comma-separate more user ids if needed
-# DISCORD_ALLOW_ALL_USERS=true             # everyone in the server
+# Who may talk to the bot at all. Pick ONE approach:
+#  a) Everyone who can reach the bot (anyone in a server it's in, in channels and DMs):
+DISCORD_ALLOWED_USERS=*
+#  b) Only certain people: your id plus a role you can create (roles and users combine):
+# DISCORD_ALLOWED_USERS=<your user id>
+# DISCORD_ALLOWED_ROLES=<guest role id>
+# Optional: only answer in these channels (DMs unaffected):
+# DISCORD_ALLOWED_CHANNELS=<channel id>
 DISCORD_REQUIRE_MENTION=true               # in channels, reply only when @mentioned
 ```
 
@@ -66,6 +70,8 @@ gateway:
 ```
 
 Your own messages go to your normal (default) profile, with your memory, tools and soul. Every other sender falls through to `guest`.
+
+> **Don't use `DISCORD_ALLOW_ALL_USERS=true` together with `DISCORD_ALLOWED_USERS`.** Hermes only consults the allow-all switch when no user or role allowlist is set, so guests would still be denied. To admit everyone, use `DISCORD_ALLOWED_USERS=*`. Your ID belongs in `profile_routes` and `allow_admin_from` (it's what gives you full access), not necessarily in the allowlist.
 
 ---
 
