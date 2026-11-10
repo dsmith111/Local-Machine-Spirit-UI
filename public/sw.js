@@ -1,6 +1,6 @@
 /* Cogitator service worker: caches the app shell so the PWA opens instantly
  * and offline. API traffic (/api/*) is never cached. */
-const VERSION = 'cogitator-v6';
+const VERSION = 'cogitator-v8';
 const SHELL = [
   './',
   'index.html',

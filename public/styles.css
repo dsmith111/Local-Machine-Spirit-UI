@@ -563,6 +563,58 @@ textarea#input::placeholder { color: var(--phos-faint); text-shadow: none; }
 .archive-list .del { flex: none; background: none; border: 0; color: #8a5a50; padding: 0 10px; cursor: pointer; font-size: 1.1rem; }
 .archive-list .del:hover { color: #ff8a7a; }
 .drawer-foot { margin: 0; font-size: 0.75rem; color: #8a7655; }
+.archive-list .open { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: pan-y; }
+.archive-list .fav-mark { color: var(--brass-hi); text-shadow: 0 0 6px rgba(230,190,110,0.5); }
+.ctx-menu {
+  position: fixed;
+  z-index: 30;
+  min-width: 150px;
+  display: grid;
+  padding: 4px;
+  background: linear-gradient(180deg, var(--iron), var(--iron-2));
+  border: 1px solid var(--brass-lo);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.75);
+  animation: ctx-in 0.1s ease-out;
+}
+@keyframes ctx-in { from { opacity: 0; transform: scale(0.96); } }
+.ctx-item {
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  color: #d9c7a0;
+  font: inherit;
+  padding: 8px 10px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.ctx-item:hover, .ctx-item:focus-visible { outline: none; border-color: var(--brass-lo); color: var(--brass-hi); background: rgba(180,146,90,0.1); }
+.archive-list .open.renaming { display: flex; align-items: center; padding: 4px; cursor: default; border-color: var(--brass-lo); }
+.archive-list input.rename {
+  width: 100%; min-width: 0;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--brass-lo);
+  color: var(--brass-hi);
+  font: inherit;
+  padding: 4px 6px;
+}
+.archive-list input.rename:focus { outline: 1px solid var(--brass); }
+.drawer-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--brass-lo); }
+.drawer-tabs button {
+  flex: 1;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  color: #8a7655;
+  padding: 7px 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.drawer-tabs button.on { color: var(--brass-hi); border-color: var(--brass-lo); background: rgba(180,146,90,0.1); margin-bottom: -1px; }
+.drawer-tabs .count { background: var(--brass-lo); color: var(--brass-hi); }
+.drawer-tabs .count:empty { display: none; }
 
 /* ---------- Dialog ---------- */
 dialog {

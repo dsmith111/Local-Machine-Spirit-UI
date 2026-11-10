@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Share+Tech+Mono&family=VT323&display=swap">
-  <link rel="stylesheet" href="styles.css?v=2026.11.08-r10">
+  <link rel="stylesheet" href="styles.css?v=2026.11.10-r12">
 </head>
 <body>
   <div class="hood" aria-hidden="true"></div>
@@ -71,7 +71,11 @@
       </button>
     </div>
     <button class="rite-btn wide" id="btn-new">+ Begin New Communion</button>
-    <ul class="archive-list" id="archive-list"></ul>
+    <div class="drawer-tabs" id="drawer-tabs" role="tablist" aria-label="Archive views">
+      <button type="button" role="tab" data-tab="all" class="on" aria-selected="true" aria-controls="archive-list">All Records</button>
+      <button type="button" role="tab" data-tab="fav" aria-selected="false" aria-controls="archive-list">★ Favoured <span class="count" id="fav-count"></span></button>
+    </div>
+    <ul class="archive-list" id="archive-list" role="tabpanel"></ul>
     <p class="drawer-foot">Records are kept on this device. The machine spirit keeps its own.</p>
   </aside>
 
@@ -140,7 +144,7 @@
     </symbol>
   </svg>
 
-  <script src="markdown.js?v=2026.11.08-r10"></script>
-  <script src="app.js?v=2026.11.08-r10"></script>
+  <script src="markdown.js?v=2026.11.10-r12"></script>
+  <script src="app.js?v=2026.11.10-r12"></script>
 </body>
 </html>

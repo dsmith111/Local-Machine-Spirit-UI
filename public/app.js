@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.08-r10';
+  const BUILD = '2026.11.10-r12';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -204,9 +204,12 @@
   // Archives (conversations)
   // -------------------------------------------------------------------------
   function persist() {
-    // Keep storage bounded: most recent 60 conversations.
+    // Keep storage bounded: most recent 60 conversations. Favoured ones are never dropped.
     archives.sort((a, b) => b.updated - a.updated);
-    if (archives.length > 60) archives = archives.slice(0, 60);
+    if (archives.length > 60) {
+      let room = Math.max(0, 60 - archives.filter((c) => c.pinned).length);
+      archives = archives.filter((c) => c.pinned || room-- > 0);
+    }
     if (!store.set(LS_ARCHIVES, archives)) {
       // Likely quota: drop image thumbnails from older conversations and retry.
       for (const c of archives.slice(5)) for (const m of c.messages) delete m.images;
@@ -226,21 +229,199 @@
     return conv;
   }
 
-  function renderArchiveList() {
-    el.archiveList.replaceChildren(
-      ...archives
-        .slice()
-        .sort((a, b) => b.updated - a.updated)
-        .map((c) =>
-          h(
-            'li',
-            { class: c.id === currentId ? 'active' : '' },
+  // Which drawer tab is showing: 'all' or 'fav'.
+  let drawerTab = 'all';
+  let renamingId = null;
+
+  function togglePin(c) {
+    c.pinned = !c.pinned;
+    store.set(LS_ARCHIVES, archives);
+    renderArchiveList();
+  }
+
+  function renameConversation(c, title) {
+    const t = (title || '').trim().replace(/\s+/g, ' ');
+    if (t && t !== c.title) {
+      c.title = t.length > 80 ? t.slice(0, 79) + '…' : t;
+      store.set(LS_ARCHIVES, archives);
+    }
+    renamingId = null;
+    renderArchiveList();
+  }
+
+  function renameField(c) {
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      if (save) renameConversation(c, input.value);
+      else {
+        renamingId = null;
+        renderArchiveList();
+      }
+    };
+    const input = h('input', {
+      class: 'rename',
+      type: 'text',
+      maxlength: '80',
+      value: c.title,
+      'aria-label': 'New designation',
+      onkeydown: (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        }
+      },
+      onblur: () => finish(true),
+    });
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return h('div', { class: 'open renaming' }, input);
+  }
+
+  // Hold (long-press) or right-click a communion for its context menu.
+  const HOLD_MS = 500;
+  let ctxMenu = null;
+  let suppressClick = false;
+
+  function closeCtxMenu() {
+    if (!ctxMenu) return;
+    ctxMenu.remove();
+    ctxMenu = null;
+  }
+
+  function openCtxMenu(c, anchor, x, y) {
+    closeCtxMenu();
+    const act = (fn) => () => {
+      closeCtxMenu();
+      fn();
+    };
+    const items = [
+      h('button', { type: 'button', role: 'menuitem', class: 'ctx-item', onclick: act(() => togglePin(c)) }, c.pinned ? '☆ Unfavour' : '★ Favour'),
+      h(
+        'button',
+        {
+          type: 'button',
+          role: 'menuitem',
+          class: 'ctx-item',
+          onclick: act(() => {
+            renamingId = c.id;
+            renderArchiveList();
+          }),
+        },
+        '✎ Rename',
+      ),
+    ];
+    ctxMenu = h(
+      'div',
+      {
+        class: 'ctx-menu',
+        role: 'menu',
+        'aria-label': `Rites for ${c.title}`,
+        onkeydown: (e) => {
+          const i = items.indexOf(document.activeElement);
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeCtxMenu();
+            anchor.focus();
+          } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const n = items.length;
+            items[(i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n].focus();
+          } else if (e.key === 'Tab') {
+            closeCtxMenu();
+          }
+        },
+      },
+      items,
+    );
+    document.body.append(ctxMenu);
+    // Keyboard-invoked menus have no pointer position; anchor to the row instead.
+    const r = anchor.getBoundingClientRect();
+    if (!x && !y) {
+      x = r.left + 12;
+      y = r.bottom - 4;
+    }
+    const m = ctxMenu.getBoundingClientRect();
+    ctxMenu.style.left = Math.max(4, Math.min(x, innerWidth - m.width - 4)) + 'px';
+    ctxMenu.style.top = Math.max(4, Math.min(y, innerHeight - m.height - 4)) + 'px';
+    items[0].focus();
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (ctxMenu && !ctxMenu.contains(e.target)) closeCtxMenu();
+  });
+  window.addEventListener('resize', closeCtxMenu);
+
+  function holdable(btn, c) {
+    let timer = null;
+    let start = null;
+    let pressing = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      suppressClick = false;
+      pressing = true;
+      start = { x: e.clientX, y: e.clientY };
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        suppressClick = true;
+        if (navigator.vibrate) navigator.vibrate(10);
+        openCtxMenu(c, btn, start.x, start.y);
+      }, HOLD_MS);
+    });
+    btn.addEventListener('pointermove', (e) => {
+      if (timer && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+      btn.addEventListener(ev, () => {
+        pressing = false;
+        cancel();
+      });
+    }
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      cancel();
+      // Touch browsers fire contextmenu on long-press too; don't reopen the menu,
+      // and swallow the click that may follow the finger lifting.
+      if (pressing) suppressClick = true;
+      if (ctxMenu) return;
+      openCtxMenu(c, btn, e.clientX, e.clientY);
+    });
+    return btn;
+  }
+
+  function archiveItem(c) {
+    const cls = [c.id === currentId ? 'active' : '', c.pinned ? 'fav' : ''].filter(Boolean).join(' ');
+    return h(
+      'li',
+      { class: cls },
+      renamingId === c.id
+        ? renameField(c)
+        : holdable(
             h(
               'button',
               {
                 class: 'open',
                 type: 'button',
+                title: 'Hold for more rites',
+                'aria-haspopup': 'menu',
                 onclick: () => {
+                  if (suppressClick) {
+                    suppressClick = false;
+                    return;
+                  }
                   if (busy) return;
                   currentId = c.id;
                   persist();
@@ -248,32 +429,55 @@
                   renderConversation();
                 },
               },
-              h('span', { class: 't' }, c.title),
+              h('span', { class: 't' }, c.pinned ? h('span', { class: 'fav-mark', 'aria-label': 'Favoured' }, '★ ') : null, c.title),
               h('span', { class: 'd' }, `${fmtDate(c.updated)} · ${c.messages.length} entries`),
             ),
-            h(
-              'button',
-              {
-                class: 'del',
-                type: 'button',
-                'aria-label': `Expunge ${c.title}`,
-                title: 'Expunge',
-                onclick: () => {
-                  if (busy && c.id === currentId) return;
-                  if (!confirm(`Expunge “${c.title}”?`)) return;
-                  archives = archives.filter((x) => x.id !== c.id);
-                  if (currentId === c.id) currentId = null;
-                  persist();
-                  renderArchiveList();
-                  renderConversation();
-                },
-              },
-              '✕',
-            ),
+            c,
           ),
-        ),
+      h(
+        'button',
+        {
+          class: 'del',
+          type: 'button',
+          'aria-label': `Expunge ${c.title}`,
+          title: 'Expunge',
+          onclick: () => {
+            if (busy && c.id === currentId) return;
+            if (!confirm(`Expunge “${c.title}”?`)) return;
+            archives = archives.filter((x) => x.id !== c.id);
+            if (currentId === c.id) currentId = null;
+            persist();
+            renderArchiveList();
+            renderConversation();
+          },
+        },
+        '✕',
+      ),
     );
-    if (!archives.length) el.archiveList.append(h('li', { class: 'drawer-foot' }, 'The archives are empty.'));
+  }
+
+  function renderDrawerTabs() {
+    const favCount = archives.filter((c) => c.pinned).length;
+    for (const btn of document.querySelectorAll('#drawer-tabs [data-tab]')) {
+      const on = btn.dataset.tab === drawerTab;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    $('#fav-count').textContent = favCount ? String(favCount) : '';
+  }
+
+  function renderArchiveList() {
+    renderDrawerTabs();
+    // Favoured first, then most recent.
+    const sorted = archives.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updated - a.updated);
+    const shown = drawerTab === 'fav' ? sorted.filter((c) => c.pinned) : sorted;
+    el.archiveList.replaceChildren(...shown.map(archiveItem));
+    if (!shown.length) {
+      el.archiveList.append(
+        h('li', { class: 'drawer-foot' }, drawerTab === 'fav' ? 'No communions are favoured. Hold one (or right-click it) and choose Favour to keep it here.' : 'The archives are empty.'),
+      );
+    }
+    if (drawerTab === 'fav') return;
     if (serverConfig.proclamations?.enabled || proclamations.length) {
       const unread = unreadProclamations();
       el.archiveList.prepend(
@@ -297,11 +501,21 @@
     el.scrim.hidden = false;
   }
   function closeDrawer() {
+    closeCtxMenu();
+    renamingId = null;
     el.drawer.hidden = true;
     el.scrim.hidden = true;
   }
   $('#btn-archives').addEventListener('click', openDrawer);
   $('#btn-close-drawer').addEventListener('click', closeDrawer);
+  for (const btn of document.querySelectorAll('#drawer-tabs [data-tab]')) {
+    btn.addEventListener('click', () => {
+      drawerTab = btn.dataset.tab;
+      closeCtxMenu();
+      renamingId = null;
+      renderArchiveList();
+    });
+  }
   el.scrim.addEventListener('click', closeDrawer);
   $('#btn-new').addEventListener('click', () => {
     if (busy) return;
