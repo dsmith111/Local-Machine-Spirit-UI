@@ -46,7 +46,7 @@ Some features work with any OpenAI-compatible endpoint. The rest light up when t
 | **Pict-Captures** | Attach photos. They are downscaled on the device and sent as inline images. | Vision models |
 | **Forged Picts** | Images the agent makes or finds appear in the reply inside a brass pict-capture frame; tap one to view it full screen and save it. Works with Hermes' `MEDIA:/path` file tags and with Markdown images. | Any that send them ([details](#-vii-the-extended-litanies)) |
 | **Cease** | Stops a run in progress. | Any |
-| **Data-Archives** | Conversations are saved on your device, so you can switch between them. | Any |
+| **Data-Archives** | Conversations are saved on your device, so you can switch between them. Rename a conversation with ✎, and favour it with ☆ to pin it to the top and list it under the **★ Favoured** tab. Favoured conversations are never trimmed from the archive. | Any |
 | **Noosphere Link** | A status light in the header shows whether the harness is reachable. | Any (`/health`, else `/v1/models`) |
 | **Phosphor Rites** | Choose green, amber, crimson or pale-blue phosphor. Scanlines, flicker and the boot sequence can each be turned off. | — |
 | **Ritual Speech** *(optional)* | Adds a system prompt so the agent answers in character as a machine spirit while keeping the content accurate. Off by default. | Any |

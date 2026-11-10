@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.08-r10';
+  const BUILD = '2026.11.10-r11';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -204,9 +204,12 @@
   // Archives (conversations)
   // -------------------------------------------------------------------------
   function persist() {
-    // Keep storage bounded: most recent 60 conversations.
+    // Keep storage bounded: most recent 60 conversations. Favoured ones are never dropped.
     archives.sort((a, b) => b.updated - a.updated);
-    if (archives.length > 60) archives = archives.slice(0, 60);
+    if (archives.length > 60) {
+      let room = Math.max(0, 60 - archives.filter((c) => c.pinned).length);
+      archives = archives.filter((c) => c.pinned || room-- > 0);
+    }
     if (!store.set(LS_ARCHIVES, archives)) {
       // Likely quota: drop image thumbnails from older conversations and retry.
       for (const c of archives.slice(5)) for (const m of c.messages) delete m.images;
@@ -226,54 +229,155 @@
     return conv;
   }
 
-  function renderArchiveList() {
-    el.archiveList.replaceChildren(
-      ...archives
-        .slice()
-        .sort((a, b) => b.updated - a.updated)
-        .map((c) =>
-          h(
-            'li',
-            { class: c.id === currentId ? 'active' : '' },
-            h(
-              'button',
-              {
-                class: 'open',
-                type: 'button',
-                onclick: () => {
-                  if (busy) return;
-                  currentId = c.id;
-                  persist();
-                  closeDrawer();
-                  renderConversation();
-                },
+  // Which drawer tab is showing: 'all' or 'fav'.
+  let drawerTab = 'all';
+  let renamingId = null;
+
+  function togglePin(c) {
+    c.pinned = !c.pinned;
+    store.set(LS_ARCHIVES, archives);
+    renderArchiveList();
+  }
+
+  function renameConversation(c, title) {
+    const t = (title || '').trim().replace(/\s+/g, ' ');
+    if (t && t !== c.title) {
+      c.title = t.length > 80 ? t.slice(0, 79) + '…' : t;
+      store.set(LS_ARCHIVES, archives);
+    }
+    renamingId = null;
+    renderArchiveList();
+  }
+
+  function renameField(c) {
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      if (save) renameConversation(c, input.value);
+      else {
+        renamingId = null;
+        renderArchiveList();
+      }
+    };
+    const input = h('input', {
+      class: 'rename',
+      type: 'text',
+      maxlength: '80',
+      value: c.title,
+      'aria-label': 'New designation',
+      onkeydown: (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(true);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          finish(false);
+        }
+      },
+      onblur: () => finish(true),
+    });
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return h('div', { class: 'open renaming' }, input);
+  }
+
+  function archiveItem(c) {
+    const cls = [c.id === currentId ? 'active' : '', c.pinned ? 'fav' : ''].filter(Boolean).join(' ');
+    return h(
+      'li',
+      { class: cls },
+      h(
+        'button',
+        {
+          class: 'star' + (c.pinned ? ' on' : ''),
+          type: 'button',
+          'aria-label': c.pinned ? `Unfavour ${c.title}` : `Favour ${c.title}`,
+          'aria-pressed': c.pinned ? 'true' : 'false',
+          title: c.pinned ? 'Unfavour' : 'Favour',
+          onclick: () => togglePin(c),
+        },
+        c.pinned ? '★' : '☆',
+      ),
+      renamingId === c.id
+        ? renameField(c)
+        : h(
+            'button',
+            {
+              class: 'open',
+              type: 'button',
+              onclick: () => {
+                if (busy) return;
+                currentId = c.id;
+                persist();
+                closeDrawer();
+                renderConversation();
               },
-              h('span', { class: 't' }, c.title),
-              h('span', { class: 'd' }, `${fmtDate(c.updated)} · ${c.messages.length} entries`),
-            ),
-            h(
-              'button',
-              {
-                class: 'del',
-                type: 'button',
-                'aria-label': `Expunge ${c.title}`,
-                title: 'Expunge',
-                onclick: () => {
-                  if (busy && c.id === currentId) return;
-                  if (!confirm(`Expunge “${c.title}”?`)) return;
-                  archives = archives.filter((x) => x.id !== c.id);
-                  if (currentId === c.id) currentId = null;
-                  persist();
-                  renderArchiveList();
-                  renderConversation();
-                },
-              },
-              '✕',
-            ),
+            },
+            h('span', { class: 't' }, c.title),
+            h('span', { class: 'd' }, `${fmtDate(c.updated)} · ${c.messages.length} entries`),
           ),
-        ),
+      h(
+        'button',
+        {
+          class: 'ren',
+          type: 'button',
+          'aria-label': `Rename ${c.title}`,
+          title: 'Rename',
+          onclick: () => {
+            renamingId = c.id;
+            renderArchiveList();
+          },
+        },
+        '✎',
+      ),
+      h(
+        'button',
+        {
+          class: 'del',
+          type: 'button',
+          'aria-label': `Expunge ${c.title}`,
+          title: 'Expunge',
+          onclick: () => {
+            if (busy && c.id === currentId) return;
+            if (!confirm(`Expunge “${c.title}”?`)) return;
+            archives = archives.filter((x) => x.id !== c.id);
+            if (currentId === c.id) currentId = null;
+            persist();
+            renderArchiveList();
+            renderConversation();
+          },
+        },
+        '✕',
+      ),
     );
-    if (!archives.length) el.archiveList.append(h('li', { class: 'drawer-foot' }, 'The archives are empty.'));
+  }
+
+  function renderDrawerTabs() {
+    const favCount = archives.filter((c) => c.pinned).length;
+    for (const btn of document.querySelectorAll('#drawer-tabs [data-tab]')) {
+      const on = btn.dataset.tab === drawerTab;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    $('#fav-count').textContent = favCount ? String(favCount) : '';
+  }
+
+  function renderArchiveList() {
+    renderDrawerTabs();
+    // Favoured first, then most recent.
+    const sorted = archives.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updated - a.updated);
+    const shown = drawerTab === 'fav' ? sorted.filter((c) => c.pinned) : sorted;
+    el.archiveList.replaceChildren(...shown.map(archiveItem));
+    if (!shown.length) {
+      el.archiveList.append(
+        h('li', { class: 'drawer-foot' }, drawerTab === 'fav' ? 'No communions are favoured. Mark one with ☆ to keep it here.' : 'The archives are empty.'),
+      );
+    }
+    if (drawerTab === 'fav') return;
     if (serverConfig.proclamations?.enabled || proclamations.length) {
       const unread = unreadProclamations();
       el.archiveList.prepend(
@@ -297,11 +401,19 @@
     el.scrim.hidden = false;
   }
   function closeDrawer() {
+    renamingId = null;
     el.drawer.hidden = true;
     el.scrim.hidden = true;
   }
   $('#btn-archives').addEventListener('click', openDrawer);
   $('#btn-close-drawer').addEventListener('click', closeDrawer);
+  for (const btn of document.querySelectorAll('#drawer-tabs [data-tab]')) {
+    btn.addEventListener('click', () => {
+      drawerTab = btn.dataset.tab;
+      renamingId = null;
+      renderArchiveList();
+    });
+  }
   el.scrim.addEventListener('click', closeDrawer);
   $('#btn-new').addEventListener('click', () => {
     if (busy) return;
