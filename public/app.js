@@ -11,7 +11,7 @@
   // Storage
   // -------------------------------------------------------------------------
   // Keep in step with the ?v= query strings in index.html.
-  const BUILD = '2026.11.10-r11';
+  const BUILD = '2026.11.10-r12';
   const LS_SETTINGS = 'cogitator.settings.v1';
   const LS_ARCHIVES = 'cogitator.archives.v1';
   const LS_CURRENT = 'cogitator.current.v1';
@@ -285,55 +285,155 @@
     return h('div', { class: 'open renaming' }, input);
   }
 
+  // Hold (long-press) or right-click a communion for its context menu.
+  const HOLD_MS = 500;
+  let ctxMenu = null;
+  let suppressClick = false;
+
+  function closeCtxMenu() {
+    if (!ctxMenu) return;
+    ctxMenu.remove();
+    ctxMenu = null;
+  }
+
+  function openCtxMenu(c, anchor, x, y) {
+    closeCtxMenu();
+    const act = (fn) => () => {
+      closeCtxMenu();
+      fn();
+    };
+    const items = [
+      h('button', { type: 'button', role: 'menuitem', class: 'ctx-item', onclick: act(() => togglePin(c)) }, c.pinned ? '☆ Unfavour' : '★ Favour'),
+      h(
+        'button',
+        {
+          type: 'button',
+          role: 'menuitem',
+          class: 'ctx-item',
+          onclick: act(() => {
+            renamingId = c.id;
+            renderArchiveList();
+          }),
+        },
+        '✎ Rename',
+      ),
+    ];
+    ctxMenu = h(
+      'div',
+      {
+        class: 'ctx-menu',
+        role: 'menu',
+        'aria-label': `Rites for ${c.title}`,
+        onkeydown: (e) => {
+          const i = items.indexOf(document.activeElement);
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeCtxMenu();
+            anchor.focus();
+          } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const n = items.length;
+            items[(i + (e.key === 'ArrowDown' ? 1 : n - 1)) % n].focus();
+          } else if (e.key === 'Tab') {
+            closeCtxMenu();
+          }
+        },
+      },
+      items,
+    );
+    document.body.append(ctxMenu);
+    // Keyboard-invoked menus have no pointer position; anchor to the row instead.
+    const r = anchor.getBoundingClientRect();
+    if (!x && !y) {
+      x = r.left + 12;
+      y = r.bottom - 4;
+    }
+    const m = ctxMenu.getBoundingClientRect();
+    ctxMenu.style.left = Math.max(4, Math.min(x, innerWidth - m.width - 4)) + 'px';
+    ctxMenu.style.top = Math.max(4, Math.min(y, innerHeight - m.height - 4)) + 'px';
+    items[0].focus();
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    if (ctxMenu && !ctxMenu.contains(e.target)) closeCtxMenu();
+  });
+  window.addEventListener('resize', closeCtxMenu);
+
+  function holdable(btn, c) {
+    let timer = null;
+    let start = null;
+    let pressing = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      suppressClick = false;
+      pressing = true;
+      start = { x: e.clientX, y: e.clientY };
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        suppressClick = true;
+        if (navigator.vibrate) navigator.vibrate(10);
+        openCtxMenu(c, btn, start.x, start.y);
+      }, HOLD_MS);
+    });
+    btn.addEventListener('pointermove', (e) => {
+      if (timer && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+      btn.addEventListener(ev, () => {
+        pressing = false;
+        cancel();
+      });
+    }
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      cancel();
+      // Touch browsers fire contextmenu on long-press too; don't reopen the menu,
+      // and swallow the click that may follow the finger lifting.
+      if (pressing) suppressClick = true;
+      if (ctxMenu) return;
+      openCtxMenu(c, btn, e.clientX, e.clientY);
+    });
+    return btn;
+  }
+
   function archiveItem(c) {
     const cls = [c.id === currentId ? 'active' : '', c.pinned ? 'fav' : ''].filter(Boolean).join(' ');
     return h(
       'li',
       { class: cls },
-      h(
-        'button',
-        {
-          class: 'star' + (c.pinned ? ' on' : ''),
-          type: 'button',
-          'aria-label': c.pinned ? `Unfavour ${c.title}` : `Favour ${c.title}`,
-          'aria-pressed': c.pinned ? 'true' : 'false',
-          title: c.pinned ? 'Unfavour' : 'Favour',
-          onclick: () => togglePin(c),
-        },
-        c.pinned ? '★' : '☆',
-      ),
       renamingId === c.id
         ? renameField(c)
-        : h(
-            'button',
-            {
-              class: 'open',
-              type: 'button',
-              onclick: () => {
-                if (busy) return;
-                currentId = c.id;
-                persist();
-                closeDrawer();
-                renderConversation();
+        : holdable(
+            h(
+              'button',
+              {
+                class: 'open',
+                type: 'button',
+                title: 'Hold for more rites',
+                'aria-haspopup': 'menu',
+                onclick: () => {
+                  if (suppressClick) {
+                    suppressClick = false;
+                    return;
+                  }
+                  if (busy) return;
+                  currentId = c.id;
+                  persist();
+                  closeDrawer();
+                  renderConversation();
+                },
               },
-            },
-            h('span', { class: 't' }, c.title),
-            h('span', { class: 'd' }, `${fmtDate(c.updated)} · ${c.messages.length} entries`),
+              h('span', { class: 't' }, c.pinned ? h('span', { class: 'fav-mark', 'aria-label': 'Favoured' }, '★ ') : null, c.title),
+              h('span', { class: 'd' }, `${fmtDate(c.updated)} · ${c.messages.length} entries`),
+            ),
+            c,
           ),
-      h(
-        'button',
-        {
-          class: 'ren',
-          type: 'button',
-          'aria-label': `Rename ${c.title}`,
-          title: 'Rename',
-          onclick: () => {
-            renamingId = c.id;
-            renderArchiveList();
-          },
-        },
-        '✎',
-      ),
       h(
         'button',
         {
@@ -374,7 +474,7 @@
     el.archiveList.replaceChildren(...shown.map(archiveItem));
     if (!shown.length) {
       el.archiveList.append(
-        h('li', { class: 'drawer-foot' }, drawerTab === 'fav' ? 'No communions are favoured. Mark one with ☆ to keep it here.' : 'The archives are empty.'),
+        h('li', { class: 'drawer-foot' }, drawerTab === 'fav' ? 'No communions are favoured. Hold one (or right-click it) and choose Favour to keep it here.' : 'The archives are empty.'),
       );
     }
     if (drawerTab === 'fav') return;
@@ -401,6 +501,7 @@
     el.scrim.hidden = false;
   }
   function closeDrawer() {
+    closeCtxMenu();
     renamingId = null;
     el.drawer.hidden = true;
     el.scrim.hidden = true;
@@ -410,6 +511,7 @@
   for (const btn of document.querySelectorAll('#drawer-tabs [data-tab]')) {
     btn.addEventListener('click', () => {
       drawerTab = btn.dataset.tab;
+      closeCtxMenu();
       renamingId = null;
       renderArchiveList();
     });
